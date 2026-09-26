@@ -220,6 +220,8 @@ class SendService:
                 "attachments are disabled; set FMAIILY_ATTACHMENTS_ENABLED=true to allow them",
                 details={"attachments": len(msg.attachments)},
             )
+        # Re-check the cap here even for inline content: by this point the bytes are already
+        # decoded and in memory, and the cap is a gateway policy rather than a schema rule.
         for attachment in msg.attachments:
             if len(attachment.content) > settings.attachment_max_bytes:
                 from fmaiily.errors import AttachmentTooLarge
