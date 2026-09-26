@@ -13,6 +13,7 @@ What actually differs between the two backends, and is therefore worth testing h
 
 from __future__ import annotations
 
+import base64
 import os
 import threading
 from datetime import UTC, datetime, timedelta
@@ -35,7 +36,7 @@ pytestmark = [
 ]
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
-FAKE_KEY = "dGVzdC1rZXktZm9yLXBv-H7_abcdefghijklmnop"
+FAKE_KEY = base64.urlsafe_b64encode(b"p" * 32).decode()
 
 
 @pytest.fixture
@@ -49,15 +50,27 @@ def pg_settings() -> Settings:
     )
 
 
-@pytest.fixture
-def pg_engine(pg_settings, request) -> Engine:
+def _reset(engine: Engine) -> None:
+    """Drop every table *including* the Alembic version stamp.
+
+    `Base.metadata.drop_all` only knows the models, so it leaves `alembic_version` stamped at head
+    and the next `upgrade head` becomes a silent no-op - which looks exactly like a broken
+    migration. The stamp has to go with the schema.
+    """
     from fmaiily.db import Base
 
-    engine = create_db_engine(pg_settings.database_url)
     Base.metadata.drop_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+
+@pytest.fixture
+def pg_engine(pg_settings) -> Engine:
+    engine = create_db_engine(pg_settings.database_url)
+    _reset(engine)
     run_migrations(pg_settings.database_url, pg_settings.validate_migrations())
     yield engine
-    Base.metadata.drop_all(engine)
+    _reset(engine)
     engine.dispose()
 
 
@@ -97,16 +110,32 @@ def account(pg_session_factory) -> Account:
         return row
 
 
-def _enqueue(queue: QueueService, account: Account, count: int) -> list[int]:
-    payload = build_mime(
+def _payload(account: Account) -> bytes:
+    return build_mime(
         OutgoingMessage(from_email=account.email, to=("a@example.com",), subject="s", body="b"),
         now=NOW,
     )
+
+
+def _enqueue(queue: QueueService, account: Account, count: int, **kwargs) -> list[int]:
+    """Enqueue `count` jobs. Pacing spaces them 2s apart, so a caller that wants every job due at
+    once must claim with an advancing clock - exactly as the worker does in production."""
     ids = []
     for _ in range(count):
-        job = queue.enqueue(account=account, payload=payload, recipients=1, source="api", now=NOW)
+        job = queue.enqueue(
+            account=account,
+            payload=_payload(account),
+            recipients=1,
+            source="api",
+            now=NOW,
+            **kwargs,
+        )
         ids.append(job.id)
     return ids
+
+
+def _pacing_times(queue: QueueService, ids: list[int]) -> list[datetime]:
+    return [job.scheduled_at for job in (queue.get(job_id) for job_id in ids) if job is not None]
 
 
 def test_migrations_apply_to_postgres(pg_engine) -> None:
@@ -144,22 +173,36 @@ def test_enqueue_and_claim_on_postgres(queue, account) -> None:
     assert claimed.lease_expires_at == NOW + timedelta(seconds=60)
 
 
+def test_pacing_spaces_jobs_just_like_sqlite(queue, account) -> None:
+    ids = _enqueue(queue, account, 3)
+    stored = [queue.get(job_id) for job_id in ids]
+    assert [job.scheduled_at for job in stored if job] == [
+        NOW,
+        NOW + timedelta(seconds=2),
+        NOW + timedelta(seconds=4),
+    ]
+
+
 def test_returning_claim_prevents_a_double_claim(queue, account) -> None:
-    _enqueue(queue, account, 3)
+    ids = _enqueue(queue, account, 2)
     first = queue.claim_next(worker_id="w1", now=NOW, lease_seconds=60)
-    second = queue.claim_next(worker_id="w2", now=NOW, lease_seconds=60)
+    second = queue.claim_next(worker_id="w2", now=NOW + timedelta(seconds=2), lease_seconds=60)
     assert first is not None and second is not None
     assert first.id != second.id
+    assert {first.id, second.id} == set(ids)
 
 
 def test_concurrent_claims_never_hand_out_the_same_job(queue, account) -> None:
     _enqueue(queue, account, 8)
+    # every job is due at once here: the claim query re-checks status, so a race is a no-op
     claimed: list[int | None] = []
     lock = threading.Lock()
 
     def drain(worker_id: str) -> None:
         while True:
-            job = queue.claim_next(worker_id=worker_id, now=NOW, lease_seconds=60)
+            job = queue.claim_next(
+                worker_id=worker_id, now=NOW + timedelta(hours=1), lease_seconds=600
+            )
             with lock:
                 claimed.append(job.id if job else None)
             if job is None:
@@ -219,10 +262,14 @@ def test_lease_recovery_on_postgres(queue, account) -> None:
 
 
 def test_idempotency_unique_constraint_holds_on_postgres(queue, account) -> None:
-    """The database, not just the application, refuses a second row for the same key."""
+    """The database, not just the application, refuses a second row for the same key.
+
+    `QueueService.enqueue` is called directly here, so the scope has to be supplied explicitly -
+    `SendService` is what normally fills it in.
+    """
     from sqlalchemy.exc import IntegrityError
 
-    first = _enqueue(queue, account, 1)[0]
+    first = _enqueue(queue, account, 1, idempotency_key="idem-1", idempotency_scope="global")[0]
     stored = queue.get(first)
     assert stored is not None
     with pytest.raises(IntegrityError), queue.session_factory() as session:
@@ -235,18 +282,17 @@ def test_idempotency_unique_constraint_holds_on_postgres(queue, account) -> None
                 scheduled_at=NOW,
                 created_at=NOW,
                 updated_at=NOW,
-                idempotency_scope="global",
+                idempotency_scope=stored.idempotency_scope,
                 idempotency_key=stored.idempotency_key,
             )
         )
         session.commit()
 
 
-def test_payload_encryption_round_trips_on_postgres(queue, account) -> None:
-
+def test_payload_encryption_round_trips_on_postgres(queue, account, cipher) -> None:
     job_id = _enqueue(queue, account, 1)[0]
     stored = queue.get(job_id)
     assert stored is not None and stored.raw_payload_enc is not None
     raw_b64 = cipher.decrypt(stored.raw_payload_enc, aad=str(job_id))
-    assert b"Subject: s" in __import__("base64").urlsafe_b64decode(raw_b64 + "===")
+    assert b"Subject: s" in base64.urlsafe_b64decode(raw_b64 + "===")
     assert to_raw_b64(b"x")  # keeps the import meaningful

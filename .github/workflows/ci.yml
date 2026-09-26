@@ -1,5 +1,6 @@
 name: ci
 on: [push, pull_request]
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -10,6 +11,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -17,3 +19,39 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --extra dev
       - run: uv run pytest -m "not e2e and not postgres" --cov --cov-report=term-missing
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra dev
+      - run: uv run pytest -m e2e
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fmaiily
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra dev --extra postgres
+      - run: uv run pytest -m postgres
+        env:
+          FMAIILY_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/fmaiily
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/docker-smoke.sh
