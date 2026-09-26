@@ -62,6 +62,10 @@ class QueueService:
         self._settings = settings
         self._sleeper = sleeper
 
+    @property
+    def session_factory(self) -> sessionmaker[Session]:
+        return self._session_factory
+
     # ----------------------------------------------------------------- enqueue
 
     def enqueue(
