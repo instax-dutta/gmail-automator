@@ -18,25 +18,36 @@ def fake_gmail_app() -> FastAPI:
     async def token(request: Request) -> JSONResponse:
         form = await request.form()
         app.state.requests.append({"path": "/token", "form": dict(form)})
-        return JSONResponse(
-            {
-                "access_token": "fake-access-token",
-                "expires_in": 3600,
-                "refresh_token": form.get("refresh_token") or "fake-refresh-token",
-                "token_type": "Bearer",
-                "scope": " ".join(form.get("scope", "").split()),
-            }
-        )
+        behavior: dict[str, Any] = dict(app.state.behavior.get("token", {}))
+        if behavior.get("status", 200) != 200:
+            return JSONResponse(
+                behavior.get(
+                    "error_body", {"error": "invalid_grant", "error_description": "bad code"}
+                ),
+                status_code=behavior["status"],
+            )
+        payload: dict[str, Any] = {
+            "access_token": "fake-access-token",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+            "scope": app.state.behavior.get("token_scopes")
+            or " ".join(str(form.get("scope", "")).split()),
+        }
+        if not app.state.behavior.get("omit_refresh_token"):
+            payload["refresh_token"] = form.get("refresh_token") or "fake-refresh-token"
+        return JSONResponse(payload)
 
     @app.get("/v1/userinfo")
     async def userinfo(request: Request) -> JSONResponse:
         app.state.requests.append(
             {"path": "/v1/userinfo", "auth": request.headers.get("authorization")}
         )
+        if not str(request.headers.get("authorization", "")).startswith("Bearer "):
+            return JSONResponse({"error": "invalid_token"}, status_code=401)
         return JSONResponse(
             {
                 "email": app.state.behavior.get("userinfo_email", DEFAULT_ACCOUNT),
-                "email_verified": True,
+                "email_verified": app.state.behavior.get("userinfo_email_verified", True),
                 "sub": "123",
             }
         )

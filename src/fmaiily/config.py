@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     google_oauth_client_secret: SecretStr | None = None
     oauth_redirect_uri: str = "http://localhost:8000/v1/oauth/google/callback"
     oauth_scopes: list[str] = DEFAULT_SCOPES
+    oauth_authorization_uri: str = "https://accounts.google.com/o/oauth2/v2/auth"
     oauth_token_uri: str = "https://oauth2.googleapis.com/token"
+    oauth_state_ttl_seconds: int = 600
     oidc_userinfo_url: str = "https://openidconnect.googleapis.com/v1/userinfo"
     gmail_api_endpoint: str = "https://gmail.googleapis.com"
 
