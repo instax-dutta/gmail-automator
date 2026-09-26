@@ -257,6 +257,7 @@ def _mount_metrics_middleware(app: FastAPI) -> None:
 def _mount_routes(app: FastAPI) -> None:
     from fmaiily.rest import (
         routes_accounts,
+        routes_drafts,
         routes_health,
         routes_jobs,
         routes_oauth,
@@ -269,6 +270,7 @@ def _mount_routes(app: FastAPI) -> None:
     app.include_router(routes_accounts.router)
     app.include_router(routes_quota.router)
     app.include_router(routes_send.router)
+    app.include_router(routes_drafts.router)
     app.include_router(routes_jobs.router)
 
 

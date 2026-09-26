@@ -36,8 +36,11 @@ class FakeGmailTransport:
 
     default_message_id: str = "msg-1"
     calls: list[dict[str, Any]] = field(default_factory=list)
+    draft_calls: list[dict[str, Any]] = field(default_factory=list)
     _results: list[Any] = field(default_factory=list)
     _errors: list[Exception] = field(default_factory=list)
+    _draft_results: list[Any] = field(default_factory=list)
+    _draft_errors: list[Exception] = field(default_factory=list)
 
     def script_result(self, message_id: str, thread_id: str | None = None) -> None:
         from fmaiily.gmail.client import SendResult
@@ -48,6 +51,37 @@ class FakeGmailTransport:
 
     def script_error(self, error: Exception) -> None:
         self._errors.append(error)
+
+    def script_draft_result(
+        self, draft_id: str, message_id: str | None = None, thread_id: str | None = None
+    ) -> None:
+        from fmaiily.gmail.client import DraftResult
+
+        self._draft_results.append(
+            DraftResult(draft_id=draft_id, message_id=message_id, thread_id=thread_id)
+        )
+
+    def script_draft_error(self, error: Exception) -> None:
+        self._draft_errors.append(error)
+
+    def create_draft(
+        self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
+    ) -> Any:
+        from fmaiily.gmail.client import DraftResult
+
+        self.draft_calls.append(
+            {
+                "email": email,
+                "access_token": access_token,
+                "raw_b64url": raw_b64url,
+                "thread_id": thread_id,
+            }
+        )
+        if self._draft_errors:
+            raise self._draft_errors.pop(0)
+        if self._draft_results:
+            return self._draft_results.pop(0)
+        return DraftResult(draft_id="draft-1", message_id="draft-msg-1", thread_id=thread_id)
 
     def send_raw(
         self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None

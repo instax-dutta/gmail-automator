@@ -49,6 +49,13 @@ class SendResult:
     label_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class DraftResult:
+    draft_id: str
+    message_id: str | None
+    thread_id: str | None
+
+
 class GoogleApiError(Exception):
     """A normalized Gmail API failure."""
 
@@ -91,6 +98,10 @@ class GmailTransport(Protocol):
     def send_raw(
         self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
     ) -> SendResult: ...
+
+    def create_draft(
+        self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
+    ) -> DraftResult: ...
 
 
 class GoogleGmailTransport:
@@ -136,6 +147,31 @@ class GoogleGmailTransport:
             message_id=str(payload.get("id", "")),
             thread_id=payload.get("threadId"),
             label_ids=tuple(payload.get("labelIds") or ()),
+        )
+
+    def create_draft(
+        self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
+    ) -> DraftResult:
+        """Create a draft instead of sending. Requires the `gmail.compose` scope.
+
+        The caller checks the scope first, so a 403 here means Google changed its mind, not that the
+        request was misconfigured.
+        """
+        service = self._service(access_token)
+        message: dict[str, Any] = {"raw": raw_b64url}
+        if thread_id:
+            message["threadId"] = thread_id
+        request = service.users().drafts().create(userId=email, body={"message": message})
+        request.headers["authorization"] = f"Bearer {access_token}"
+        try:
+            payload = request.execute()
+        except HttpError as exc:
+            raise _translate(exc) from exc
+        inner = payload.get("message") or {}
+        return DraftResult(
+            draft_id=str(payload.get("id", "")),
+            message_id=inner.get("id"),
+            thread_id=inner.get("threadId") or payload.get("threadId"),
         )
 
 
