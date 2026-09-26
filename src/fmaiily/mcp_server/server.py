@@ -26,7 +26,7 @@ from fmaiily.container import Container, require
 from fmaiily.errors import GatewayError
 from fmaiily.gmail.mime import OutgoingMessage
 from fmaiily.schemas import AccountSummary, to_outgoing_message
-from fmaiily.send import SendOutcome, SendService
+from fmaiily.send import SendOutcome, SendService, request_fingerprint
 
 INSTRUCTIONS = """\
 Send email from the operator's own Gmail or Google Workspace accounts.
@@ -201,6 +201,7 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
             msg=message,
             source=source,
             idempotency_key=request.idempotency_key,
+            request_hash=(request_fingerprint(request) if request.idempotency_key else None),
             wait=request.wait,
             thread_id=request.thread_id,
         )

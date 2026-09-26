@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fmaiily.accounts import AccountService
 from fmaiily.api_keys import SCOPE_SEND, ApiKeyContext
@@ -13,6 +15,9 @@ from fmaiily.gmail.mime import OutgoingMessage, build_mime, count_recipients
 from fmaiily.models import Account, SendJob
 from fmaiily.queue import QueueService
 from fmaiily.quota import QuotaService, QuotaSnapshot
+
+if TYPE_CHECKING:
+    from fmaiily.schemas import SendEmailRequest
 
 SendStatus = Literal["sent", "queued", "failed"]
 
@@ -67,10 +72,10 @@ class SendService:
         sleeper: Sleeper | None = None,
     ) -> None:
         self.settings = settings
-        self._accounts = accounts
-        self._quota = quota
-        self._queue = queue
-        self._clock = clock
+        self.accounts = accounts
+        self.quota = quota
+        self.queue = queue
+        self.clock = clock
         self._sleeper = sleeper
 
     def send(
@@ -81,28 +86,34 @@ class SendService:
         source: str,
         api_key: ApiKeyContext | None = None,
         idempotency_key: str | None = None,
+        request_hash: str | None = None,
         wait: bool = True,
         wait_timeout: float | None = None,
         now: datetime | None = None,
         thread_id: str | None = None,
     ) -> SendOutcome:
-        now = now or self._clock.now()
+        now = now or self.clock.now()
         timeout = self.settings.send_wait_timeout_seconds if wait_timeout is None else wait_timeout
 
         if api_key is not None:
             api_key.require_scope(SCOPE_SEND)
 
-        account = self._accounts.resolve(account_email)
+        account = self.accounts.resolve(account_email)
         if api_key is not None:
             api_key.require_account(account.email)
         self._require_usable(account)
 
         recipients = count_recipients(msg)
         self._validate(msg, recipients=recipients)
-        self._quota.check(account, recipients, now=now)
+        self.quota.check(account, recipients, now=now)
 
         payload = build_mime(msg, now=now)
-        job = self._queue.enqueue(
+        scope = (
+            f"key:{api_key.key_id}"
+            if api_key is not None and api_key.key_id is not None
+            else "global"
+        )
+        job = self.queue.enqueue(
             account=account,
             payload=payload,
             recipients=recipients,
@@ -110,24 +121,17 @@ class SendService:
             now=now,
             api_key_id=api_key.key_id if api_key else None,
             idempotency_key=idempotency_key,
-            idempotency_scope=(f"key:{api_key.key_id}" if api_key and api_key.key_id else "global")
-            if idempotency_key
-            else None,
+            idempotency_scope=scope,
+            request_hash=request_hash,
             thread_id=thread_id,
         )
 
-        if not wait:
-            return SendOutcome(
-                job_id=job.id,
-                status="queued",
-                message_id=None,
-                error_code=None,
-                error_message=None,
-                account_email=account.email,
-                quota=self._quota.snapshot(account, now=now),
-            )
-
-        final = self._queue.wait_for_terminal(job.id, timeout=timeout, sleeper=self._sleeper)
+        if wait:
+            final = self.queue.wait_for_terminal(job.id, timeout=timeout, sleeper=self._sleeper)
+        else:
+            # A replay can land on a job that is already terminal, so the real state is reported
+            # rather than assuming "queued".
+            final = job
         return self.outcome_for(final, account=account, fallback_job_id=job.id, now=now)
 
     def send_batch(
@@ -150,7 +154,7 @@ class SendService:
         if not messages:
             raise InvalidRequest("a batch must contain at least one message")
 
-        account = self._accounts.resolve(account_email)
+        account = self.accounts.resolve(account_email)
         if api_key is not None:
             api_key.require_account(account.email)
         self._require_usable(account)
@@ -162,7 +166,7 @@ class SendService:
             recipients = count_recipients(msg)
             self._validate(msg, recipients=recipients)
             cumulative += recipients
-            self._quota.check(account, cumulative, now=now)
+            self.quota.check(account, cumulative, now=now)
 
         outcomes: list[SendOutcome] = []
         for msg in messages:
@@ -239,7 +243,7 @@ class SendService:
         now: datetime | None = None,
     ) -> SendOutcome:
         """Map a persisted job row onto the agent-facing outcome shape."""
-        now = now or self._clock.now()
+        now = now or self.clock.now()
         if job is None:
             return SendOutcome(
                 job_id=fallback_job_id,
@@ -268,8 +272,42 @@ class SendService:
             error_code=error_code,
             error_message=error_message,
             account_email=account.email,
-            quota=self._quota.snapshot(account, now=now),
+            quota=self.quota.snapshot(account, now=now),
         )
+
+
+def request_fingerprint(request: SendEmailRequest) -> str:
+    """Stable digest of everything that determines what is sent.
+
+    Used to tell an idempotent retry (same intent, replay the original job) from a genuine reuse
+    of the key for a different message. `thread_id` is excluded because it is transport metadata,
+    not part of the message, and it defaults to null so its absence must not change the digest.
+    """
+    payload: dict[str, Any] = {
+        "to": list(request.to),
+        "cc": list(request.cc),
+        "bcc": list(request.bcc),
+        "subject": request.subject,
+        "body": request.body,
+        "body_html": request.body_html,
+        "reply_to": request.reply_to,
+        "in_reply_to": request.in_reply_to,
+        "references": request.references,
+        "attachments": [
+            {
+                "filename": item.filename,
+                "mime_type": item.mime_type,
+                "sha256": _digest(item.content_base64 or ""),
+            }
+            for item in request.attachments
+        ],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _digest(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _utf8_len(value: str) -> int:

@@ -24,6 +24,15 @@ TERMINAL_STATUSES = (SENT, FAILED, REJECTED)
 ACTIVE_STATUSES = (PENDING, PROCESSING)
 
 
+def _replayable(job: SendJob, request_hash: str | None) -> bool:
+    """A retry replays only if it is the same request and the fingerprint was recorded.
+
+    A row written before fingerprints existed has `request_hash is None`; treating that as a match
+    would silently swallow a genuinely different request, so it is treated as a conflict instead.
+    """
+    return request_hash is not None and job.request_hash == request_hash
+
+
 class QueueService:
     """Durable send queue backed by `send_jobs` (master plan R5).
 
@@ -66,10 +75,12 @@ class QueueService:
         api_key_id: int | None = None,
         idempotency_key: str | None = None,
         idempotency_scope: str | None = None,
+        request_hash: str | None = None,
         thread_id: str | None = None,
     ) -> SendJob:
         now = now or self._clock.now()
         with self._session_factory() as session:
+            existing = None
             if idempotency_key:
                 existing = session.scalar(
                     select(SendJob).where(
@@ -77,11 +88,18 @@ class QueueService:
                         SendJob.idempotency_key == idempotency_key,
                     )
                 )
-                if existing is not None:
-                    raise DuplicateRequest(
-                        "an identical request was already submitted",
-                        details={"job_id": existing.id, "idempotency_key": idempotency_key},
-                    )
+            if existing is not None and _replayable(existing, request_hash):
+                # A byte-identical retry: hand back the original job instead of sending twice.
+                session.expunge(existing)
+                return existing
+            if existing is not None:
+                raise DuplicateRequest(
+                    "this idempotency key was already used with a different request body",
+                    details={
+                        "job_id": existing.id,
+                        "idempotency_key": idempotency_key,
+                    },
+                )
 
             if self._depth(session, account_id=account.id) >= self._settings.queue_max_depth:
                 raise QueueFull(
@@ -125,6 +143,7 @@ class QueueService:
                 thread_id=thread_id,
                 idempotency_scope=idempotency_scope,
                 idempotency_key=idempotency_key,
+                request_hash=request_hash,
                 max_attempts=self._settings.max_attempts,
                 scheduled_at=scheduled_at,
                 payload_expires_at=now + timedelta(hours=self._settings.payload_retention_hours),
