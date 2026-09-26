@@ -155,7 +155,7 @@ def create_app(
         resolved = container
         if resolved is None:
             if run_migrations_on_startup:
-                run_migrations(candidate.database_url, candidate.alembic_ini_path)
+                run_migrations(candidate.database_url, candidate.validate_migrations())
             resolved = build_container(candidate)
         app.state.container = resolved
         _log.info(

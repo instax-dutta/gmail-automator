@@ -59,7 +59,7 @@ def _container(settings: Settings | None = None) -> Container:
     resolved = settings or _settings()
     configure_logging(level=resolved.log_level, json_output=False, stream=sys.stderr)
     _quiet_alembic()
-    run_migrations(resolved.database_url, resolved.alembic_ini_path)
+    run_migrations(resolved.database_url, resolved.validate_migrations())
     return build_container(resolved)
 
 
@@ -129,7 +129,7 @@ def mcp_stdio() -> None:
     # stdout is the protocol channel for MCP; everything human goes to stderr
     configure_logging(level="WARNING", json_output=False, stream=sys.stderr)
     _quiet_alembic()
-    run_migrations(settings.database_url, settings.alembic_ini_path)
+    run_migrations(settings.database_url, settings.validate_migrations())
     container = build_container(settings)
 
     from fmaiily.mcp_server.server import create_mcp_server
@@ -143,7 +143,7 @@ def mcp_stdio() -> None:
 def migrate() -> None:
     """Create or upgrade the database schema."""
     settings = _settings()
-    run_migrations(settings.database_url, settings.alembic_ini_path)
+    run_migrations(settings.database_url, settings.validate_migrations())
     dialect = settings.database_url.split("://", 1)[0]
     typer.secho(f"migrations applied ({dialect})", fg=typer.colors.GREEN)
 

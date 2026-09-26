@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     log_json: bool = True
     metrics_enabled: bool = True
 
+    alembic_ini: str | None = None
     mcp_mount_path: str = "/mcp"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -114,8 +115,28 @@ class Settings(BaseSettings):
 
     @property
     def alembic_ini_path(self) -> Path:
-        """Repository-root alembic.ini, whether running from a checkout or an installed wheel."""
+        """Locate alembic.ini.
+
+        Order: the explicit `FMAIILY_ALEMBIC_INI` (how the container image points at /app), then a
+        copy shipped inside the package, then the repository root of a source checkout.
+        """
+        if self.alembic_ini:
+            return Path(self.alembic_ini)
         packaged = Path(__file__).resolve().parent / "alembic.ini"
         if packaged.is_file():
             return packaged
         return Path(__file__).resolve().parents[2] / "alembic.ini"
+
+    def validate_migrations(self) -> Path:
+        """Fail with an actionable message instead of an Alembic ``CommandError``."""
+        ini = self.alembic_ini_path
+        if not ini.is_file():
+            raise FileNotFoundError(
+                f"alembic.ini not found at {ini}; set FMAIILY_ALEMBIC_INI to its location"
+            )
+        script_dir = ini.parent / "migrations"
+        if not script_dir.is_dir():
+            raise FileNotFoundError(
+                f"migrations directory not found at {script_dir}; it must sit next to alembic.ini"
+            )
+        return ini
