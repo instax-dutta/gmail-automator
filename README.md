@@ -1,5 +1,9 @@
 # Fmaiily
 
+[![CI](https://github.com/instax-dutta/gmail-automator/actions/workflows/ci.yml/badge.svg)](https://github.com/instax-dutta/gmail-automator/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+
 Self-hosted Gmail gateway for AI agents. Your agent sends email **as you**, through your own Gmail
 or Google Workspace account, over MCP or a REST API, while the gateway quietly enforces Gmail's
 official sending limits so the account is never locked.
@@ -10,9 +14,40 @@ official sending limits so the account is never locked.
 - **Limits first.** Rolling 24-hour counters with configurable soft limits, per-account pacing, and
   exponential backoff. A send that would exceed a limit is refused *before* Google is called.
 - **Tokens encrypted at rest** (AES-256-GCM) and never returned over the API or written to a log.
+- **Drains on your schedule.** A durable SQLite-backed queue with leases, so a restart mid-send
+  resumes instead of losing the job.
 
-Spec: [`prd.md`](prd.md) · Implementation plan: [`docs/superpowers/plans/`](docs/superpowers/plans/) ·
-Google setup: [`docs/google-cloud-setup.md`](docs/google-cloud-setup.md)
+**Documentation:** [Google Cloud setup](docs/google-cloud-setup.md) · [Operations runbook](docs/operations.md) ·
+[Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
+> The GitHub repository is `gmail-automator`; the Python distribution and import package are
+> `fmaiily`, and the CLI is `fmaiily`. They are the same thing.
+
+---
+
+## The problem
+
+Handing an agent a Gmail credential means handing it a live sending quota. One careless retry loop
+and the account is throttled or locked, and the failure looks like a bug in the agent rather than a
+limit. Most existing options make this worse: they ask for full mailbox read access, they hide their
+quota assumptions, or they run someone else's infrastructure over your mail.
+
+Fmaiily sits in between. It is a small service you run yourself that holds one narrow credential
+(`gmail.send`), accounts for every send before it happens, and refuses the risky one with a clear
+error your agent can reason about.
+
+---
+
+## Requirements
+
+| | |
+|---|---|
+| Python | 3.12 or newer (3.12 and 3.13 tested in CI) |
+| Database | SQLite (bundled) or PostgreSQL 14+ |
+| Google | A Cloud project with the Gmail API enabled and an OAuth client |
+| Access | A Gmail account you own, or a Workspace mailbox with domain-wide delegation |
+
+Nothing else. No Redis, no message broker, no external database to operate.
 
 ---
 
@@ -153,17 +188,40 @@ Stable codes: `invalid_request`, `unauthorized`, `forbidden`, `account_not_found
 Served by the same process at `/mcp`, guarded by the same API key:
 
 ```json
-{"mcpServers": {"fmaiily": {"url": "http://localhost:8000/mcp",
-                            "headers": {"Authorization": "Bearer fmg_..."}}}}
+{
+  "mcpServers": {
+    "fmaiily": {
+      "url": "http://localhost:8000/mcp",
+      "headers": { "Authorization": "Bearer fmg_YOUR_KEY_HERE" }
+    }
+  }
+}
 ```
+
+Clients that read `mcpServers` from a JSON file (Claude Desktop, Cursor, Windsurf, and most others)
+want the same shape.
+
+Use `/mcp` **without** a trailing slash. `/mcp/` answers with a 307, which MCP clients do not follow
+for POST, so the request fails with an opaque error. This is not a quirk of the URL you type - it is
+why the server uses a custom mount instead of a conventional one, noted in
+[docs/operations.md](docs/operations.md).
 
 ### stdio
 
 For agent clients that spawn a subprocess:
 
 ```json
-{"mcpServers": {"fmaiily": {"command": "fmaiily", "args": ["mcp-stdio"]}}}
+{
+  "mcpServers": {
+    "fmaiily": { "command": "fmaiily", "args": ["mcp-stdio"] }
+  }
+}
 ```
+
+The subprocess inherits the environment, so `FMAIILY_DATABASE_URL` and
+`FMAIILY_TOKEN_ENCRYPTION_KEY` must be visible to the client - see
+[Configuration](#configuration). If the client does not pass the environment through, wrap the
+command: `"command": "sh", "args": ["-c", "FMAIILY_DATABASE_URL=... fmaiily mcp-stdio"]`.
 
 | Tool                      | What it does                                                        |
 |---------------------------|---------------------------------------------------------------------|
@@ -225,13 +283,13 @@ Every setting is an environment variable prefixed `FMAIILY_`; see
 ## CLI
 
 ```
-fmaiily serve          # HTTP gateway: REST + MCP
-fmaiily mcp-stdio      # MCP over stdio
-fmaiily migrate        # apply database migrations
-fmaiily gen-key        # generate a token encryption key
-fmaiily status [--json]          # accounts, remaining capacity, queue depth
-fmaiily rotate-keys [--dry-run]  # re-encrypt stored tokens under a new key
-fmaiily send-test <recipient>     # send a real message end to end
+fmaiily serve                 # HTTP gateway: REST + MCP
+fmaiily mcp-stdio             # MCP over stdio
+fmaiily migrate               # apply database migrations
+fmaiily gen-key               # generate a token encryption key
+fmaiily status [--json]       # accounts, remaining capacity, queue depth
+fmaiily send-test <recipient> # send a real message end to end
+fmaiily rotate-keys [--dry-run]   # re-encrypt stored tokens under a new key
 fmaiily accounts list|connect|disconnect
 fmaiily keys create|list|revoke
 fmaiily purge-history [--days N]
@@ -239,6 +297,8 @@ fmaiily purge-history [--days N]
 
 `status --json` and `keys list` write JSON to **stdout**; logs and human messages go to **stderr**,
 so both are safe to pipe.
+
+---
 
 ## Operator status page
 
@@ -259,6 +319,8 @@ FMAIILY_SERVICE_ACCOUNT_SUBJECT=agent@acme.co
 See [`docs/google-cloud-setup.md`](docs/google-cloud-setup.md#service-accounts-workspace-only) for
 the admin-side steps. Everything else - least-privilege scopes, encrypted storage, quota
 enforcement - is unchanged.
+
+---
 
 ## Development
 
@@ -290,12 +352,25 @@ without binding a port.
 - The log pipeline redacts secret-looking keys recursively, and the container runs as uid 10001
   with a single writable volume.
 
+Full posture, and how to report a problem: [`SECURITY.md`](SECURITY.md).
+
 ## Your responsibilities
 
 You remain responsible for the Gmail Terms of Service, recipient consent, and anti-spam rules.
 Fmaiily does not hide or bypass Gmail's limits; it stays well inside them so your account is not at
 risk. Do not use it for bulk or unsolicited mail.
 
+---
+
+## Contributing
+
+Bug reports and pull requests are welcome. Start with
+[`CONTRIBUTING.md`](CONTRIBUTING.md); the short version is `make check` plus
+`uv run pytest -m e2e` must pass, and commits follow
+[Conventional Commits](https://www.conventionalcommits.org/).
+
+Please read [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) before participating.
+
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT - see [`LICENSE`](LICENSE).

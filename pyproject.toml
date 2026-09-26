@@ -5,10 +5,30 @@ build-backend = "hatchling.build"
 [project]
 name = "fmaiily"
 version = "0.1.0"
-description = "Self-hosted Gmail gateway for AI agents (MCP + REST)"
+description = "Self-hosted Gmail gateway for AI agents: MCP tools and a REST API, with encrypted tokens and Gmail quota enforcement"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Fmaiily contributors" }]
+keywords = ["gmail", "mcp", "ai-agents", "email", "self-hosted", "oauth", "fastapi"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Web Environment",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Communications :: Email",
+  "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+  "Topic :: Security :: Cryptography",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
 dependencies = [
   "fastapi>=0.141,<1",
   "uvicorn[standard]>=0.54,<1",
@@ -39,11 +59,39 @@ dev = [
   "types-httplib2>=0.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/instax-dutta/gmail-automator"
+Source = "https://github.com/instax-dutta/gmail-automator"
+Issues = "https://github.com/instax-dutta/gmail-automator/issues"
+Changelog = "https://github.com/instax-dutta/gmail-automator/blob/main/CHANGELOG.md"
+Security = "https://github.com/instax-dutta/gmail-automator/security/policy"
+Discussions = "https://github.com/instax-dutta/gmail-automator/discussions"
+
 [project.scripts]
 fmaiily = "fmaiily.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fmaiily"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/migrations",
+  "/docs",
+  "/scripts",
+  "/alembic.ini",
+  "/.env.example",
+  "/Dockerfile",
+  "/docker-compose.yml",
+  "/Makefile",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/CONTRIBUTING.md",
+  "/SECURITY.md",
+  "/CODE_OF_CONDUCT.md",
+  "/LICENSE",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -9,3 +9,9 @@ htmlcov/
 dist/
 data/
 .env
+
+# Local development records, not part of the published product surface.
+# Kept locally as working contracts; see README "Contributing" for the public workflow.
+AGENTS.md
+prd.md
+docs/superpowers/

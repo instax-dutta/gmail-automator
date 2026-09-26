@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a capability or a change in behaviour.
+labels: ["enhancement", "needs triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        Describe the situation you are in, not the solution you have in mind. What are you trying to
+        do, and what does Fmaiily do instead?
+      validations:
+        required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The behaviour you want. Sketch the interface if there is one.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Including "I would work around it like this", if that is the honest answer.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This works over both REST and MCP, not just one.
+        - label: This is configurable rather than hard-coded.
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Before submitting
+      options:
+        - label: "This is for a legitimate use - consenting recipients, my own accounts, and mail within Google's limits."
