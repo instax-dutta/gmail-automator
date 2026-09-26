@@ -36,6 +36,7 @@ dev = [
   "time-machine>=3.5,<4",
   "ruff>=0.16,<1",
   "mypy>=2.3,<3",
+  "types-httplib2>=0.1",
 ]
 
 [project.scripts]
