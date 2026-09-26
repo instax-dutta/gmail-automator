@@ -71,3 +71,34 @@ def test_sqlite_path_extraction() -> None:
         _env_file=None,
     )
     assert s3.sqlite_path is None
+
+
+def test_service_account_scopes_parse_from_a_comma_separated_env_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: list-typed settings need a CSV validator because decoding is disabled.
+
+    `enable_decoding=False` (master plan R13) means a bare JSON array from the environment is a
+    type error, not a convenience. Operators get CSV, like every other list setting here.
+    """
+    monkeypatch.setenv("FMAIILY_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
+    monkeypatch.setenv("FMAIILY_SERVICE_ACCOUNT_KEY_FILE", "/run/secrets/sa.json")
+    monkeypatch.setenv("FMAIILY_SERVICE_ACCOUNT_SUBJECT", "agent@acme.co")
+    monkeypatch.setenv(
+        "FMAIILY_SERVICE_ACCOUNT_SCOPES",
+        "https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.compose",
+    )
+    settings = Settings(_env_file=None)
+    assert settings.service_account_scopes == [
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.compose",
+    ]
+    assert settings.is_service_account_configured is True
+
+
+def test_service_account_scopes_default_to_send_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Least privilege by default: nothing beyond gmail.send without an explicit override."""
+    monkeypatch.setenv("FMAIILY_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
+    settings = Settings(_env_file=None)
+    assert settings.service_account_scopes == ["https://www.googleapis.com/auth/gmail.send"]
+    assert settings.is_service_account_configured is False
