@@ -85,6 +85,7 @@ Base path `/v1`. Every route requires `Authorization: Bearer <key>` except `/hea
 | `GET`    | `/v1/send/limits`           | The limits this gateway will actually enforce        |
 | `GET`    | `/v1/jobs/{id}`             | Status of one send                                   |
 | `GET`    | `/v1/history`               | Recent sends, newest first                           |
+| `POST`   | `/v1/drafts`                | Create a draft instead of sending                    |
 
 Interactive docs are at `/docs`.
 
@@ -174,6 +175,7 @@ For agent clients that spawn a subprocess:
 | `disconnect_account`      | Disconnect an account and delete its tokens                         |
 | `get_send_history`        | Recent sends with status and error codes                            |
 | `get_send_status`         | One job in detail, including the Gmail message id                   |
+| `create_draft`            | Create a draft instead of sending, for human review                 |
 
 Tools return structured results. A refused operation comes back as a readable error result whose
 text begins with the error code, e.g. `quota_exceeded: daily message soft limit reached...`, so a
@@ -215,6 +217,8 @@ Every setting is an environment variable prefixed `FMAIILY_`; see
 | `FMAIILY_DEFAULT_SEND_INTERVAL_SECONDS` | `2.0`                | Per-account pacing interval                        |
 | `FMAIILY_HOST` / `FMAIILY_PORT`         | `127.0.0.1` / `8000` | Bind address                                       |
 | `FMAIILY_WORKER_ENABLED`                | `true`               | Run the send worker in this process                 |
+| `FMAIILY_ATTACHMENTS_ENABLED`           | `false`              | Allow attachments                                  |
+| `FMAIILY_ATTACHMENT_ALLOWED_DIRS`       | *empty*              | Directories path attachments may be read from       |
 
 ---
 
@@ -226,6 +230,7 @@ fmaiily mcp-stdio      # MCP over stdio
 fmaiily migrate        # apply database migrations
 fmaiily gen-key        # generate a token encryption key
 fmaiily status [--json]          # accounts, remaining capacity, queue depth
+fmaiily rotate-keys [--dry-run]  # re-encrypt stored tokens under a new key
 fmaiily send-test <recipient>     # send a real message end to end
 fmaiily accounts list|connect|disconnect
 fmaiily keys create|list|revoke
@@ -235,7 +240,25 @@ fmaiily purge-history [--days N]
 `status --json` and `keys list` write JSON to **stdout**; logs and human messages go to **stderr**,
 so both are safe to pipe.
 
----
+## Operator status page
+
+`GET /status` renders the same numbers as `fmaiily status` for a browser: accounts, quota used
+against the soft limit, queue depth, and the next send time. Server-rendered, no JavaScript, and no
+external assets, so it works on a host with no internet access.
+
+## Workspace: sending as a user without any consent flow
+
+With a Workspace admin's domain-wide delegation grant, Fmaiily can send as a Workspace mailbox
+unattended - no interactive consent, and no refresh token stored at all:
+
+```dotenv
+FMAIILY_SERVICE_ACCOUNT_KEY_FILE=/run/secrets/fmaiily-sa.json
+FMAIILY_SERVICE_ACCOUNT_SUBJECT=agent@acme.co
+```
+
+See [`docs/google-cloud-setup.md`](docs/google-cloud-setup.md#service-accounts-workspace-only) for
+the admin-side steps. Everything else - least-privilege scopes, encrypted storage, quota
+enforcement - is unchanged.
 
 ## Development
 
