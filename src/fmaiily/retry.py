@@ -24,6 +24,13 @@ TRANSIENT_EXCEPTIONS: tuple[type[BaseException], ...] = (
 )
 
 
+#: Reasons that mean Google is throttling this *user*, not this one request. These justify
+#: pausing the whole account, not just the failing job.
+ACCOUNT_WIDE_REASONS: frozenset[str] = frozenset(
+    {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"}
+)
+
+
 @dataclass(frozen=True)
 class RetryDecision:
     action: Literal["retry", "fail", "refresh"]
@@ -32,6 +39,11 @@ class RetryDecision:
     delay_seconds: float
     attempt: int
     reason: str | None = None
+
+    @property
+    def account_wide(self) -> bool:
+        """True when the failure should hold back every queued message for this account."""
+        return self.reason in ACCOUNT_WIDE_REASONS
 
 
 def classify(exc: BaseException) -> str:
@@ -141,6 +153,7 @@ def decide(
 
 
 __all__ = [
+    "ACCOUNT_WIDE_REASONS",
     "DAILY_QUOTA_CODES",
     "DAILY_QUOTA_REASONS",
     "Rand",
