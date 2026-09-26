@@ -19,6 +19,7 @@ from fmaiily import __version__
 from fmaiily.api_keys import ApiKeyService
 from fmaiily.config import Settings
 from fmaiily.container import Container, build_container
+from fmaiily.crypto import TokenCipher
 from fmaiily.db import run_migrations
 from fmaiily.errors import GatewayError
 from fmaiily.gmail.mime import OutgoingMessage
@@ -374,6 +375,114 @@ def accounts_disconnect(account: Annotated[str, typer.Argument(help="Account add
     except GatewayError as exc:
         _fail(exc)
     typer.secho(f"disconnected {account}", fg=typer.colors.GREEN)
+
+
+@app.command("rotate-keys")
+def rotate_keys(
+    new_key: Annotated[
+        str | None, typer.Option(help="New base64 key; defaults to the configured key")
+    ] = None,
+    old_key: Annotated[
+        str | None, typer.Option(help="Previous key; defaults to FMAIILY_TOKEN_ENCRYPTION_KEY_OLD")
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Report only, change nothing")] = False,
+) -> None:
+    """Re-encrypt stored OAuth tokens under a new encryption key.
+
+    The order matters, and this command will tell you if you got it wrong:
+
+    1. set FMAIILY_TOKEN_ENCRYPTION_KEY to the new key and FMAIILY_TOKEN_ENCRYPTION_KEY_OLD to the
+       previous one, then restart the gateway;
+    2. run `fmaiily rotate-keys` (add --dry-run first to see what it would touch);
+    3. remove FMAIILY_TOKEN_ENCRYPTION_KEY_OLD and restart.
+
+    Skipping step 1 makes every stored token unreadable, which means reconnecting every account.
+    """
+    from fmaiily.rotations import TokenRotator, survey
+
+    settings = _settings()
+    configure_logging(level=settings.log_level, json_output=False, stream=sys.stderr)
+    _quiet_alembic()
+    run_migrations(settings.database_url, settings.validate_migrations())
+
+    previous = _decode_key(
+        old_key
+        or (
+            settings.token_encryption_key_old.get_secret_value()
+            if settings.token_encryption_key_old
+            else None
+        ),
+        "FMAIILY_TOKEN_ENCRYPTION_KEY_OLD",
+    )
+    target = _decode_key(
+        new_key or settings.token_encryption_key.get_secret_value(),
+        "FMAIILY_TOKEN_ENCRYPTION_KEY",
+    )
+    if previous == target:
+        typer.secho(
+            "the new key is the same as the old one; nothing to do", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+
+    container = build_container(settings)
+    from sqlalchemy.orm import sessionmaker
+
+    session_factory = sessionmaker(bind=container.engine, expire_on_commit=False, future=True)
+    old_cipher = TokenCipher(previous)
+
+    with session_factory() as session:
+        plan = survey(session, old_cipher=old_cipher, new_key=target, now=container.clock.now())
+    _echo_json(
+        {
+            "accounts_total": plan.accounts_total,
+            "accounts_with_tokens": plan.accounts_with_tokens,
+            "tokens_to_rotate": plan.tokens_to_rotate,
+            "already_rotated": plan.already_rotated,
+            "undecryptable_accounts": list(plan.undecryptable_accounts),
+        }
+    )
+    if plan.undecryptable_accounts:
+        typer.secho(
+            "some accounts cannot be decrypted with the old key; "
+            "fix those before relying on this rotation",
+            fg=typer.colors.RED,
+            err=True,
+        )
+    if dry_run:
+        typer.echo("dry run: nothing was changed")
+        return
+
+    report = TokenRotator(
+        session_factory=session_factory,
+        old_cipher=old_cipher,
+        new_key=target,
+        now=container.clock.now(),
+    ).run()
+    typer.secho(
+        f"rotated {report.rotated} tokens, {report.skipped} already current", fg=typer.colors.GREEN
+    )
+    if report.failed:
+        typer.secho(f"failed for: {', '.join(report.failed)}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.echo("now remove FMAIILY_TOKEN_ENCRYPTION_KEY_OLD and restart the gateway")
+
+
+def _decode_key(value: str | None, label: str) -> bytes:
+    if not value:
+        typer.secho(f"{label} is required for a key rotation", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2)
+    raw = value + "=" * (-len(value) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(raw)
+    except Exception as exc:
+        typer.secho(f"{label} is not valid base64: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+    if len(decoded) != 32:
+        typer.secho(
+            f"{label} must decode to 32 bytes, got {len(decoded)}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+    return decoded
 
 
 @app.command("purge-history")

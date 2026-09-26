@@ -78,6 +78,7 @@ async def test_every_expected_tool_is_registered(server) -> None:
         names = {tool.name for tool in (await client.list_tools()).tools}
     assert names == {
         "send_email",
+        "create_draft",
         "send_batch",
         "get_quota_status",
         "list_accounts",

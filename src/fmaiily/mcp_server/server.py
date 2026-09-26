@@ -99,6 +99,13 @@ class DisconnectToolResult(BaseModel):
     status: str
 
 
+class DraftToolResult(BaseModel):
+    draft_id: str
+    message_id: str | None
+    thread_id: str | None
+    account: str
+
+
 # ------------------------------------------------------------------- plumbing
 
 
@@ -316,6 +323,54 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
         await _call(require(container(), "oauth").revoke, account)
         return DisconnectToolResult(account=account, status="revoked")
 
+    @mcp.tool(
+        description=(
+            "Create a draft instead of sending, so a human can review it in Gmail. Needs the "
+            "account to hold a compose scope; consumes no quota and creates no job."
+        ),
+        annotations=MUTATING,
+    )
+    async def create_draft(
+        to: list[str],
+        subject: str,
+        body: str,
+        account: str | None = None,
+        body_html: str | None = None,
+        cc: list[str] | None = None,
+        thread_id: str | None = None,
+    ) -> DraftToolResult:
+        """Leave the message in the mailbox rather than sending it."""
+        from fmaiily.drafts import DraftService
+        from fmaiily.schemas import SendEmailRequest
+
+        request = _validated(
+            SendEmailRequest,
+            {
+                "to": to,
+                "subject": subject,
+                "body": body,
+                "body_html": body_html,
+                "cc": cc or [],
+                "thread_id": thread_id,
+                "wait": False,
+            },
+        )
+        drafts: DraftService = require(container(), "drafts")
+        resolved = await _call(require(container(), "accounts").resolve, account)
+        message = to_outgoing_message(request, resolved.email, settings=container().settings)
+        result = await _call(
+            drafts.create_draft,
+            account_email=resolved.email,
+            msg=message,
+            thread_id=request.thread_id,
+        )
+        return DraftToolResult(
+            draft_id=result.draft_id,
+            message_id=result.message_id,
+            thread_id=result.thread_id,
+            account=resolved.email,
+        )
+
     # ---------------------------------------------------------------- history
 
     @mcp.tool(
@@ -395,6 +450,7 @@ __all__ = [
     "AuthUrlToolResult",
     "BatchToolResult",
     "DisconnectToolResult",
+    "DraftToolResult",
     "HistoryToolResult",
     "QuotaToolResult",
     "SendToolResult",

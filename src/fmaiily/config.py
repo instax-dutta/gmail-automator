@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     environment: Literal["dev", "prod"] = "dev"
     database_url: str = "sqlite:///./data/fmaiily.db"
     token_encryption_key: SecretStr
+    #: Previous key, kept only while a rotation is staged (Phase 3, P8). Reads accept both; writes
+    #: always use `token_encryption_key`.
+    token_encryption_key_old: SecretStr | None = None
 
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None

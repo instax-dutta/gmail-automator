@@ -29,6 +29,11 @@ def _b64d(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
+def encode_key(key: bytes) -> str:
+    """Render a raw key the way `FMAIILY_TOKEN_ENCRYPTION_KEY` expects it."""
+    return _b64e(key)
+
+
 class TokenCipher:
     def __init__(self, key: bytes, *, old_keys: tuple[bytes, ...] = ()) -> None:
         if len(key) != 32:
@@ -36,8 +41,19 @@ class TokenCipher:
         for old in old_keys:
             if len(old) != 32:
                 raise ValueError("old encryption keys must be exactly 32 bytes")
+        self._key = key
+        self._old_keys = old_keys
         self._aesgcm = AESGCM(key)
         self._old = tuple(AESGCM(k) for k in old_keys)
+
+    @property
+    def known_keys(self) -> tuple[bytes, ...]:
+        """Every key this cipher can read, newest first.
+
+        A staged key rotation keeps the previous key here until every stored value has been
+        re-encrypted, so reads keep working throughout the window.
+        """
+        return (self._key, *self._old_keys)
 
     def encrypt(self, plaintext: str, *, aad: str = "") -> str:
         nonce = os.urandom(NONCE_BYTES)

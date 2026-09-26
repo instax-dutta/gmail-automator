@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from typing import Any
 
 import pytest
 from pydantic import SecretStr
@@ -24,6 +25,8 @@ from tests.support.fakes import FakeClock, FakeGmailTransport, RecordingSleeper
 from tests.support.sync_asgi import sync_asgi_client
 
 FAKE_APP = fake_gmail_app()
+#: Stable handle on the shared fake provider, for fixtures that script its behavior.
+FAKE_APP_MARKER = FAKE_APP
 SENDER = DEFAULT_ACCOUNT
 KEY = base64.urlsafe_b64encode(b"i" * 32).decode()
 
@@ -141,25 +144,39 @@ def metrics() -> Metrics:
 
 
 @pytest.fixture
-def wired(
+def build_wired(
     google_settings: Settings,
     seeded_engine: Engine,
     fake_clock: FakeClock,
     sleeper: RecordingSleeper,
     fake_transport: FakeGmailTransport,
     metrics: Metrics,
-) -> Container:
+):
+    """Factory for the full container, so a test can vary settings *before* construction.
+
+    Services capture the settings object they are built with, so changing settings afterwards would
+    not reach them - which is exactly the kind of half-wired setup worth avoiding.
+    """
+
+    def _build(**overrides: Any) -> Container:
+        container = build_container(
+            google_settings.model_copy(update=overrides) if overrides else google_settings,
+            engine=seeded_engine,
+            transport=fake_transport,
+            clock=fake_clock,
+            sleeper=sleeper,
+            http=sync_asgi_client(FAKE_APP, base_url="http://oauth.test"),
+        )
+        container.metrics = metrics
+        return container
+
+    return _build
+
+
+@pytest.fixture
+def wired(build_wired) -> Container:
     """The full container, with metrics attached and Google faked in-process."""
-    container = build_container(
-        google_settings,
-        engine=seeded_engine,
-        transport=fake_transport,
-        clock=fake_clock,
-        sleeper=sleeper,
-        http=sync_asgi_client(FAKE_APP, base_url="http://oauth.test"),
-    )
-    container.metrics = metrics
-    return container
+    return build_wired()
 
 
 @pytest.fixture

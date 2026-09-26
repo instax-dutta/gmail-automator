@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
 from sqlalchemy import Engine
@@ -12,7 +13,7 @@ from fmaiily.clock import Clock, Sleeper, SystemClock
 from fmaiily.config import Settings
 from fmaiily.crypto import TokenCipher
 from fmaiily.db import create_db_engine, create_session_factory
-from fmaiily.gmail.client import GoogleGmailTransport, SendResult
+from fmaiily.gmail.client import DraftResult, GoogleGmailTransport, SendResult
 from fmaiily.history import HistoryService
 from fmaiily.metrics import Metrics
 from fmaiily.oauth import OAuthService
@@ -22,6 +23,9 @@ from fmaiily.rate_limit import KeyRateLimiter
 from fmaiily.send import SendService
 from fmaiily.tokens import TokenManager
 
+if TYPE_CHECKING:
+    from fmaiily.drafts import DraftService
+
 
 class _Transport(Protocol):
     """The whole Gmail surface the rest of the gateway is allowed to see."""
@@ -29,6 +33,10 @@ class _Transport(Protocol):
     def send_raw(
         self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
     ) -> SendResult: ...
+
+    def create_draft(
+        self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
+    ) -> DraftResult: ...
 
 
 @dataclass
@@ -55,9 +63,15 @@ class Container:
     oauth: OAuthService | None = None
     history: HistoryService | None = None
     sender: SendService | None = None
+    drafts: DraftService | None = None
     metrics: Metrics | None = None
     key_limiter: KeyRateLimiter | None = None
     extras: dict[str, Any] = field(default_factory=dict)
+
+
+def _decode_key_base64(value: str) -> bytes:
+    raw = value + "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(raw)
 
 
 def build_container(
@@ -72,7 +86,10 @@ def build_container(
     resolved_engine = engine or create_db_engine(settings.database_url)
     session_factory = create_session_factory(resolved_engine)
     resolved_clock: Clock = clock or SystemClock()
-    cipher = TokenCipher(settings.encryption_key_bytes())
+    old_keys: tuple[bytes, ...] = ()
+    if settings.token_encryption_key_old is not None:
+        old_keys = (_decode_key_base64(settings.token_encryption_key_old.get_secret_value()),)
+    cipher = TokenCipher(settings.encryption_key_bytes(), old_keys=old_keys)
     http_client = http or httpx.Client(timeout=settings.request_timeout_seconds)
 
     accounts = AccountService(
@@ -115,7 +132,7 @@ def build_container(
     metrics = Metrics()
     key_limiter = KeyRateLimiter(clock=resolved_clock)
 
-    return Container(
+    container = Container(
         settings=settings,
         engine=resolved_engine,
         session_factory=session_factory,
@@ -138,6 +155,11 @@ def build_container(
         metrics=metrics,
         key_limiter=key_limiter,
     )
+    # Attached after construction because a few services need the container they live in.
+    from fmaiily.drafts import DraftService
+
+    container.drafts = DraftService(container=container)
+    return container
 
 
 def require(container: Container, name: str) -> Any:
