@@ -51,7 +51,7 @@ def send(
     caller.require_account(resolved.email)
     outcome = require(container, "sender").send(
         account_email=resolved.email,
-        msg=to_outgoing_message(payload, resolved.email),
+        msg=to_outgoing_message(payload, resolved.email, settings=container.settings),
         source="api",
         api_key=caller,
         idempotency_key=payload.idempotency_key,
@@ -82,7 +82,10 @@ def send_batch(
     caller.require_account(resolved.email)
     outcome: BatchOutcome = require(container, "sender").send_batch(
         account_email=resolved.email,
-        messages=[to_outgoing_message(item, resolved.email) for item in payload.emails],
+        messages=[
+            to_outgoing_message(item, resolved.email, settings=container.settings)
+            for item in payload.emails
+        ],
         source="api",
         api_key=caller,
         wait=payload.wait,

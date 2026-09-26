@@ -194,7 +194,9 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
 
     async def _send(request: Any, *, account: str | None, source: str) -> SendToolResult:
         resolved = await _call(require(container(), "accounts").resolve, account)
-        message: OutgoingMessage = to_outgoing_message(request, resolved.email)
+        message: OutgoingMessage = to_outgoing_message(
+            request, resolved.email, settings=container().settings
+        )
         outcome: SendOutcome = await _call(
             sender().send,
             account_email=resolved.email,
@@ -227,7 +229,10 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
 
         requests = [_validated(SendEmailRequest, item) for item in emails]
         resolved = await _call(require(container(), "accounts").resolve, account)
-        messages = [to_outgoing_message(item, resolved.email) for item in requests]
+        messages = [
+            to_outgoing_message(item, resolved.email, settings=container().settings)
+            for item in requests
+        ]
         outcome = await _call(
             sender().send_batch,
             account_email=resolved.email,

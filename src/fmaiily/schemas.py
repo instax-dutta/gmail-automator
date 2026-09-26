@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field, ValidationError, model_validator
 
+from fmaiily.attachments import resolve_attachments
+from fmaiily.config import Settings
 from fmaiily.gmail.mime import Attachment, OutgoingMessage
 
 SCHEMA_VERSION = "v1"
@@ -16,7 +18,9 @@ class AttachmentIn(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
     content_base64: str | None = None
     path: str | None = None
-    mime_type: str = "application/octet-stream"
+    #: Empty means "guess from the filename, else application/octet-stream". An explicit value is
+    #: always honoured, so a caller can force a type the guesser would get wrong.
+    mime_type: str = ""
 
     @model_validator(mode="after")
     def _exactly_one_source(self) -> AttachmentIn:
@@ -153,15 +157,33 @@ def _decode_attachment(spec: AttachmentIn) -> Attachment:
     return Attachment(filename=spec.filename, content=content, mime_type=spec.mime_type)
 
 
-def to_outgoing_message(req: SendEmailRequest, from_email: str) -> OutgoingMessage:
+def to_outgoing_message(
+    req: SendEmailRequest, from_email: str, *, settings: Settings | None = None
+) -> OutgoingMessage:
     """Map an API/tool request onto the transport-level message.
 
     `thread_id` is deliberately not mapped: it is Gmail transport metadata passed to
     `messages.send`, not a MIME header. Threading headers come from `in_reply_to`/`references`.
+
+    Attachments go through `attachments.resolve_attachments`, which is what confines
+    path-based attachments to `FMAIILY_ATTACHMENT_ALLOWED_DIRS`. Without `settings` only inline
+    content can be resolved, which is the safe default for internal callers.
     """
-    attachments = tuple(
-        _decode_attachment(spec) for spec in req.attachments if spec.content_base64 is not None
-    )
+    specs = [
+        (
+            spec.filename,
+            spec.content_base64,
+            spec.path,
+            spec.mime_type,
+        )
+        for spec in req.attachments
+    ]
+    if settings is not None:
+        attachments = resolve_attachments(specs, settings=settings).attachments
+    else:
+        attachments = tuple(
+            _decode_attachment(spec) for spec in req.attachments if spec.content_base64 is not None
+        )
     return OutgoingMessage(
         from_email=from_email,
         to=tuple(req.to),

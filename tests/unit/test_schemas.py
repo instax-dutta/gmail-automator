@@ -61,6 +61,10 @@ def test_to_outgoing_message_keeps_lists_immutable() -> None:
     assert isinstance(msg.to, tuple)
 
 
+def test_attachment_mime_type_defaults_to_guessing() -> None:
+    assert AttachmentIn(filename="a.txt", content_base64="aGk=").mime_type == ""
+
+
 def test_to_outgoing_message_decodes_inline_attachments() -> None:
     req = SendEmailRequest(
         to=["a@example.com"],
