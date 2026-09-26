@@ -20,7 +20,7 @@ import anyio
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from fmaiily.container import Container, require
 from fmaiily.errors import GatewayError
@@ -102,6 +102,21 @@ class DisconnectToolResult(BaseModel):
 # ------------------------------------------------------------------- plumbing
 
 
+def _validated(model: type[BaseModel], payload: dict[str, Any]) -> Any:
+    """Validate tool input, turning pydantic's error into an agent-readable ToolError.
+
+    Without this the SDK reports an opaque "Error executing tool <name>" and the model never
+    learns which field was wrong.
+    """
+    try:
+        return model.model_validate(payload)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in item['loc'])}: {item['msg']}" for item in exc.errors()
+        )
+        raise ToolError(f"invalid_request: {problems}") from exc
+
+
 async def _call[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Run a synchronous service call off the event loop.
 
@@ -158,7 +173,8 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
         """
         from fmaiily.schemas import SendEmailRequest
 
-        request = SendEmailRequest.model_validate(
+        request = _validated(
+            SendEmailRequest,
             {
                 "to": to,
                 "subject": subject,
@@ -172,7 +188,7 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
                 "thread_id": thread_id,
                 "idempotency_key": idempotency_key,
                 "wait": wait,
-            }
+            },
         )
         return await _send(request, account=account, source="mcp")
 
@@ -208,7 +224,7 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
         """Queue up to 50 messages in one call. Returns one result per input message."""
         from fmaiily.schemas import SendEmailRequest
 
-        requests = [SendEmailRequest.model_validate(item) for item in emails]
+        requests = [_validated(SendEmailRequest, item) for item in emails]
         resolved = await _call(require(container(), "accounts").resolve, account)
         messages = [to_outgoing_message(item, resolved.email) for item in requests]
         outcome = await _call(
