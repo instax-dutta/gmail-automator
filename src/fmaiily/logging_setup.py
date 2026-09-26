@@ -80,12 +80,20 @@ def _shared_processors() -> list[Any]:
 _handler: logging.Handler | None = None
 
 
-def configure_logging(*, level: str = "INFO", json_output: bool = True) -> None:
+def configure_logging(
+    *,
+    level: str = "INFO",
+    json_output: bool = True,
+    stream: Any | None = None,
+) -> None:
     """(Re)configure stdlib logging and structlog. Safe to call more than once.
 
     Both the structlog and the plain-stdlib paths funnel through the same processor chain, so a
     secret is redacted no matter which one emitted the record. Only the handler this function
     installed is replaced; handlers owned by the host application are left alone.
+
+    `stream` matters for the CLI: anything it prints to stdout may be parsed as JSON, so logs
+    there have to go to stderr instead.
     """
     global _handler
     shared = _shared_processors()
@@ -105,7 +113,7 @@ def configure_logging(*, level: str = "INFO", json_output: bool = True) -> None:
     root = logging.getLogger()
     if _handler is not None:
         root.removeHandler(_handler)
-    _handler = logging.StreamHandler(sys.stdout)
+    _handler = logging.StreamHandler(stream or sys.stdout)
     _handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=shared,
