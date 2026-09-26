@@ -102,11 +102,16 @@ class AccountService:
         email: str,
         *,
         access_token_enc: str | None = None,
+        refresh_token_enc: str | None = None,
         expiry: datetime | None = None,
         error: str | None = None,
     ) -> None:
-        """Persist a refresh outcome. A failure keeps the previous token so a transient
-        Google outage does not destroy a working session."""
+        """Persist a refresh outcome in a single write.
+
+        A failure keeps the previous token so a transient Google outage does not destroy a working
+        session, and flips the account to `error` so an operator can see it. The next successful
+        refresh flips it back to `active`.
+        """
         now = self._clock.now()
         with self._session_factory() as session:
             account = self._require(session, email)
@@ -116,9 +121,21 @@ class AccountService:
             if error is None:
                 if access_token_enc is not None:
                     account.access_token_enc = access_token_enc
+                if refresh_token_enc is not None:
+                    account.refresh_token_enc = refresh_token_enc
                 if expiry is not None:
                     account.token_expiry = expiry
                 account.status = "active"
+            else:
+                account.status = "error"
+            session.commit()
+
+    def expire_token(self, email: str) -> None:
+        """Force the next send to refresh: used when Gmail answers 401 (R: AuthExpired)."""
+        with self._session_factory() as session:
+            account = self._require(session, email)
+            account.token_expiry = None
+            account.updated_at = self._clock.now()
             session.commit()
 
     def advance_pacing(self, email: str, *, next_send_at: datetime) -> None:

@@ -33,7 +33,10 @@ def fake_gmail_app() -> FastAPI:
             "scope": app.state.behavior.get("token_scopes")
             or " ".join(str(form.get("scope", "")).split()),
         }
-        if not app.state.behavior.get("omit_refresh_token"):
+        rotated = app.state.behavior.get("rotate_refresh_token")
+        if rotated:
+            payload["refresh_token"] = rotated
+        elif not app.state.behavior.get("omit_refresh_token"):
             payload["refresh_token"] = form.get("refresh_token") or "fake-refresh-token"
         return JSONResponse(payload)
 

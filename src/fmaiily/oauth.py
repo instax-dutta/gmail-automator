@@ -17,9 +17,6 @@ from fmaiily.crypto import TokenCipher
 from fmaiily.errors import InvalidRequest, SendFailed
 from fmaiily.models import OAuthState
 
-#: Refresh slightly early so a token cannot expire in flight between our clock and Google's.
-EXPIRY_SKEW_SECONDS = 60
-
 
 @dataclass(frozen=True)
 class AuthorizationRequest:
@@ -141,7 +138,8 @@ class OAuthService:
             scopes = list(self._settings.oauth_scopes)
 
         expires_in = int(token_payload.get("expires_in") or 3600)
-        expiry = now + timedelta(seconds=max(expires_in - EXPIRY_SKEW_SECONDS, 0))
+        # store the provider-reported expiry verbatim; TokenManager renews ahead of it
+        expiry = now + timedelta(seconds=expires_in)
         refresh_token = token_payload.get("refresh_token")
 
         already_connected = any(a.email == email for a in self._accounts.list_all())

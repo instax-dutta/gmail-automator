@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     oauth_authorization_uri: str = "https://accounts.google.com/o/oauth2/v2/auth"
     oauth_token_uri: str = "https://oauth2.googleapis.com/token"
     oauth_state_ttl_seconds: int = 600
+    token_refresh_leeway_seconds: int = 60
     oidc_userinfo_url: str = "https://openidconnect.googleapis.com/v1/userinfo"
     gmail_api_endpoint: str = "https://gmail.googleapis.com"
 
