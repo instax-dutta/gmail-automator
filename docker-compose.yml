@@ -1,0 +1,50 @@
+# Fmaiily: one-command local deployment.
+#
+#   cp .env.example .env      # then edit: at minimum FMAIILY_TOKEN_ENCRYPTION_KEY
+#   docker compose up -d
+#
+# The gateway binds 127.0.0.1:8000 on the host. To reach it from another machine, change the
+# published address to 0.0.0.0 and put a TLS-terminating reverse proxy in front of it - the
+# bearer token is the only thing protecting the send surface.
+
+services:
+  fmaiily:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fmaiily:local
+    container_name: fmaiily
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # `0.0.0.0` inside the container; the published port stays on loopback.
+      FMAIILY_HOST: 0.0.0.0
+      FMAIILY_PORT: "8000"
+      FMAIILY_DATABASE_URL: sqlite:////data/fmaiily.db
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - fmaiily-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # The gateway needs no outbound access except to Google; drop the rest.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  fmaiily-data:

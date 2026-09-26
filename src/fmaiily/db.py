@@ -66,6 +66,10 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 def run_migrations(database_url: str, ini_path: Path) -> None:
+    if not Path(ini_path).is_file():
+        raise FileNotFoundError(
+            f"alembic.ini not found at {ini_path}; set FMAIILY_ALEMBIC_INI to its location"
+        )
     _ensure_sqlite_parent(database_url)
     config = Config(str(ini_path))
     config.set_main_option("sqlalchemy.url", database_url)
