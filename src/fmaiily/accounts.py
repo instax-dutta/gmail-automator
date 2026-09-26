@@ -85,6 +85,46 @@ class AccountService:
             session.expunge(account)
         return account
 
+    def register_service_account(
+        self,
+        *,
+        email: str,
+        scopes: list[str],
+        now: datetime | None = None,
+    ) -> Account:
+        """Register a Workspace mailbox reached through domain-wide delegation.
+
+        No token is stored: a service account mints one on demand, so there is no refresh secret to
+        protect. The quota and pacing columns are set exactly as for an OAuth account, because
+        Gmail applies the same limits to impersonated sends.
+        """
+        now = now or self._clock.now()
+        normalized = email.strip().lower()
+        with self._session_factory() as session:
+            account = session.scalar(select(Account).where(Account.email == normalized))
+            if account is None:
+                account = Account(
+                    email=normalized,
+                    token_uri="",
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(account)
+            account.auth_type = "service_account"
+            account.account_type = "workspace"
+            account.token_uri = ""
+            account.status = "active"
+            account.scopes = list(scopes)
+            account.access_token_enc = None
+            account.refresh_token_enc = None
+            account.token_expiry = None
+            account.updated_at = now
+            self._apply_limit_defaults(account)
+            session.commit()
+            session.refresh(account)
+            session.expunge(account)
+        return account
+
     def revoke(self, email: str) -> None:
         now = self._clock.now()
         with self._session_factory() as session:

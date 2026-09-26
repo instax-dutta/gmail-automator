@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     oauth_scopes: list[str] = DEFAULT_SCOPES
     oauth_authorization_uri: str = "https://accounts.google.com/o/oauth2/v2/auth"
     oauth_token_uri: str = "https://oauth2.googleapis.com/token"
+    #: Path to a Workspace service-account key, enabling unattended sending via domain-wide
+    #: delegation (Phase 3). The key is read at startup; it is never copied into the database.
+    service_account_key_file: str | None = None
+    service_account_subject: str | None = None
+    service_account_scopes: list[str] = [GMAIL_SEND_SCOPE]
+
     oauth_state_ttl_seconds: int = 600
     token_refresh_leeway_seconds: int = 60
     oidc_userinfo_url: str = "https://openidconnect.googleapis.com/v1/userinfo"
@@ -108,6 +114,11 @@ class Settings(BaseSettings):
     @property
     def is_oauth_configured(self) -> bool:
         return bool(self.google_oauth_client_id and self.google_oauth_client_secret)
+
+    @property
+    def is_service_account_configured(self) -> bool:
+        """A service account needs both the key file and the user to impersonate."""
+        return bool(self.service_account_key_file and self.service_account_subject)
 
     @property
     def sqlite_path(self) -> Path | None:
