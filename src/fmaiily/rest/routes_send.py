@@ -11,7 +11,7 @@ from fmaiily.schemas import (
     SendEmailResponse,
     to_outgoing_message,
 )
-from fmaiily.send import BatchOutcome, SendOutcome
+from fmaiily.send import BatchOutcome, SendOutcome, request_fingerprint
 
 #: Every /v1 router requires a resolved caller. Routes that need the identity itself
 #: declare `CallerDep` too; FastAPI caches the dependency, so it authenticates once.
@@ -55,6 +55,7 @@ def send(
         source="api",
         api_key=caller,
         idempotency_key=payload.idempotency_key,
+        request_hash=(request_fingerprint(payload) if payload.idempotency_key else None),
         wait=payload.wait,
         thread_id=payload.thread_id,
     )

@@ -65,6 +65,7 @@ class SendJob(Base):
     api_key_id: Mapped[int | None] = mapped_column(ForeignKey("api_keys.id"), default=None)
     idempotency_scope: Mapped[str | None] = mapped_column(String(80), default=None)
     idempotency_key: Mapped[str | None] = mapped_column(String(120), default=None)
+    request_hash: Mapped[str | None] = mapped_column(String(64), default=None)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, default=5)
     scheduled_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)

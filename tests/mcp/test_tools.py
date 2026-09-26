@@ -323,29 +323,46 @@ async def test_get_send_status_reports_a_missing_job(server, connected: str) -> 
 
 
 @pytest.mark.anyio
-async def test_duplicate_idempotency_key_is_reported(server, connected: str) -> None:
+async def test_repeating_an_idempotent_send_replays_the_original_job(server, connected) -> None:
+    payload = {
+        "to": ["a@example.com"],
+        "subject": "s",
+        "body": "b",
+        "wait": False,
+        "idempotency_key": "abc",
+    }
+    async with Client(server, raise_exceptions=True) as client:
+        first = await client.call_tool("send_email", payload)
+        second = await client.call_tool("send_email", payload)
+        history = await client.call_tool("get_send_history", {})
+    assert _structured(first)["job_id"] == _structured(second)["job_id"]
+    assert len(_structured(history)["items"]) == 1
+
+
+@pytest.mark.anyio
+async def test_reusing_a_key_for_a_different_message_is_reported(server, connected) -> None:
     async with Client(server, raise_exceptions=True) as client:
         await client.call_tool(
             "send_email",
             {
                 "to": ["a@example.com"],
-                "subject": "s",
+                "subject": "one",
                 "body": "b",
                 "wait": False,
                 "idempotency_key": "abc",
             },
         )
-        duplicate = await client.call_tool(
+        conflict = await client.call_tool(
             "send_email",
             {
                 "to": ["a@example.com"],
-                "subject": "s",
+                "subject": "two",
                 "body": "b",
                 "wait": False,
                 "idempotency_key": "abc",
             },
         )
-    assert "duplicate_request" in _tool_error(duplicate)
+    assert "duplicate_request" in _tool_error(conflict)
 
 
 @pytest.mark.anyio
