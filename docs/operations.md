@@ -96,6 +96,28 @@ Set `FMAIILY_LOG_LEVEL=DEBUG` only while diagnosing: it is verbose and still red
 | `attachment_too_large` | 413 | over `FMAIILY_ATTACHMENT_MAX_BYTES` | shrink the file |
 | `crypto_error` | 500 | a stored value cannot be decrypted | `FMAIILY_TOKEN_ENCRYPTION_KEY` changed: reconnect accounts |
 
+### The MCP client fails to connect
+
+The endpoint is `/mcp` **without** a trailing slash. A request to `/mcp/` gets a `307` redirect, and
+MCP clients do not follow a redirect for `POST`, so the client reports a connection or protocol
+error with nothing useful in the gateway log.
+
+This is deliberate and structural rather than a bug to file: the MCP SDK registers its handler as an
+absolute route, while a conventional ASGI mount only matches paths *below* its prefix. Fmaiily
+therefore uses a custom mount that sits at the application root, matches everything, and hands any
+request outside the MCP prefix back to the parent app, which keeps ordinary `404` and `405` behaviour
+intact.
+
+Two other causes look like this one:
+
+- **`401` on `/mcp`.** The MCP endpoint is behind the same API key as `/v1`. Send
+  `Authorization: Bearer fmg_...`, and make sure the `Accept` header includes both
+  `application/json` and `text/event-stream`.
+- **Nothing at all in the log, and a refused connection.** In stdio mode the client spawns a
+  subprocess. If `FMAIILY_DATABASE_URL` or `FMAIILY_TOKEN_ENCRYPTION_KEY` is not visible to that
+  subprocess, it exits during settings validation. Run the command by hand with the same environment
+  to see the error.
+
 ### An account is stuck in `error`
 
 The refresh token is bad. The previous access token is preserved, so nothing is lost until it also
