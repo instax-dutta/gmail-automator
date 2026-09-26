@@ -5,12 +5,13 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fmaiily.accounts import AccountService
 from fmaiily.clock import Sleeper
 from fmaiily.container import Container, require
+from fmaiily.errors import GatewayError
 from fmaiily.gmail.client import AuthExpired, SendResult
 from fmaiily.gmail.mime import to_raw_b64
 from fmaiily.history import HistoryService
@@ -19,7 +20,7 @@ from fmaiily.metrics import Metrics
 from fmaiily.models import Account, SendJob
 from fmaiily.queue import QueueService
 from fmaiily.quota import QuotaService
-from fmaiily.retry import decide
+from fmaiily.retry import RetryDecision, decide
 from fmaiily.tokens import TokenManager
 
 Action = Literal["idle", "sent", "retry_scheduled", "failed", "requeued"]
@@ -258,6 +259,7 @@ class Worker:
                 message=decision.message,
                 now=now,
             )
+            self._pause_account_for_rate_limit(decision, account_email=account_email, now=now)
             _log.warning(
                 "send_retry_scheduled",
                 job_id=job_id,
@@ -277,6 +279,37 @@ class Worker:
             source=source,
             started=started,
             account_email=account_email,
+        )
+
+    def _pause_account_for_rate_limit(
+        self,
+        decision: RetryDecision,
+        *,
+        account_email: str | None,
+        now: datetime,
+    ) -> None:
+        """Hold the whole account back when Google says the *user* is being throttled.
+
+        Only a rate-limit reason justifies this: a 5xx is about one request, and a daily-quota
+        rejection is already bounded by the quota window, so adding a delay there would just make
+        recovery slower. The cursor only ever moves forward.
+        """
+        if account_email is None or not decision.account_wide:
+            return
+        accounts: AccountService = require(self.container, "accounts")
+        try:
+            current = accounts.get(account_email).next_send_at
+        except GatewayError:
+            return
+        until = now + timedelta(seconds=decision.delay_seconds)
+        if current is not None and current >= until:
+            return
+        accounts.advance_pacing(account_email, next_send_at=until)
+        _log.warning(
+            "account_paused",
+            account=account_email,
+            until=until.isoformat(),
+            reason=decision.reason,
         )
 
     def _fail(
