@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from fmaiily import __version__
@@ -63,6 +63,18 @@ def metrics(container: ContainerDep) -> PlainTextResponse:
         registry = Metrics()
         container.metrics = registry
     return PlainTextResponse(registry.render(), media_type=registry.content_type)
+
+
+@router.get("/status", response_class=HTMLResponse, summary="Operator status page")
+def status_page(container: ContainerDep) -> HTMLResponse:
+    """A browser-friendly view of the same numbers as `fmaiily status`.
+
+    Server-rendered with no external assets, so it works on an isolated host with no internet
+    access. Unauthenticated like `/health`; it exposes no tokens, only addresses and counts.
+    """
+    from fmaiily.status_page import collect, render
+
+    return HTMLResponse(render(collect(container)))
 
 
 def _dialect(container: ContainerDep) -> str:

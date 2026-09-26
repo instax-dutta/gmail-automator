@@ -32,6 +32,24 @@ def http_settings(settings):
 
 
 @pytest.fixture
+def build_http_container(http_settings, seeded_engine, fake_clock, sleeper, fake_transport):
+    """Factory so a test can vary settings *before* the services capture them."""
+
+    def _build(**overrides) -> Container:
+        tuned = http_settings.model_copy(update=overrides) if overrides else http_settings
+        return build_container(
+            tuned,
+            engine=seeded_engine,
+            transport=fake_transport,
+            clock=fake_clock,
+            sleeper=sleeper,
+            http=sync_asgi_client(FAKE_APP, base_url="http://oauth.test"),
+        )
+
+    return _build
+
+
+@pytest.fixture
 def http_container(http_settings, seeded_engine, fake_clock, sleeper, fake_transport) -> Container:
     return build_container(
         http_settings,
