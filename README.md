@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 
+**Status: alpha.** The API may still change; pin a version if you depend on it.
+
 Self-hosted Gmail gateway for AI agents. Your agent sends email **as you**, through your own Gmail
 or Google Workspace account, over MCP or a REST API, while the gateway quietly enforces Gmail's
 official sending limits so the account is never locked.
@@ -22,6 +24,27 @@ official sending limits so the account is never locked.
 
 > The GitHub repository is `gmail-automator`; the Python distribution and import package are
 > `fmaiily`, and the CLI is `fmaiily`. They are the same thing.
+
+## Contents
+
+- [The problem](#the-problem)
+- [Requirements](#requirements)
+- [Quickstart](#quickstart)
+- [Give your agent a key](#give-your-agent-a-key)
+- [REST API](#rest-api)
+- [MCP](#mcp)
+- [How it works](#how-it-works)
+- [How limits are enforced](#how-limits-are-enforced)
+- [Configuration](#configuration)
+- [CLI](#cli)
+- [Operator status page](#operator-status-page)
+- [Workspace: unattended sending](#workspace-unattended-sending)
+- [When not to use this](#when-not-to-use-this)
+- [Development](#development)
+- [Security](#security)
+- [Your responsibilities](#your-responsibilities)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -91,6 +114,15 @@ uv run fmaiily send-test someone@example.com
 uv run fmaiily keys create my-agent --scopes send,read
 # fmg_1a2b3c4d_...            <- shown once
 ```
+
+The secret goes to stdout and the warning to stderr, so this is safe:
+
+```bash
+KEY=$(fmaiily keys create my-agent --scopes send,read | tail -1)
+```
+
+Give the key only the scopes its consumer needs - `send` to send, `read` for status and quota. A key
+with `send` alone is refused by `/v1/quota` with `403`, which is the point.
 
 Then either header works:
 
@@ -241,6 +273,42 @@ model can react rather than seeing a stack trace.
 
 ---
 
+## How it works
+
+One send, end to end:
+
+```
+agent ──MCP tool / POST /v1/send──▶ SendService
+                                     │  validate, build MIME, count recipients
+                                     │  check quota: message + recipient budget, 24h window
+                                     ▼
+                                   QueueService          encrypted body, job id as AAD
+                                     ▼
+                                   Worker (separate process or thread)
+                                     │  lease the job, refresh the token if needed
+                                     │  pacing cursor says "not before 18:42:07"
+                                     ▼
+                                   GmailTransport ──▶ Gmail API
+                                     │
+                                     ▼
+                                   event recorded ──▶ body wiped, history row written
+```
+
+The rules that matter:
+
+- **The queue is the database.** A job is a row. Restart the gateway and the next worker picks up
+  where the last one stopped, with a lease so two workers never send the same job.
+- **Refuse before the network.** Quota, recipient count, and body size are all checked before
+  Google is called, so a refusal costs nothing and cannot half-happen.
+- **Pacing is scheduled, not slept.** Jobs carry a not-before time, so a worker thread never blocks
+  and the schedule survives a restart.
+- **One policy, two front doors.** The MCP tools and the REST routes are thin adapters over the same
+  services. There is no way to reach a send that skips the quota check.
+- **Failures are typed.** Every refusal carries a stable error code, so an agent can react
+  (`quota_exceeded`, wait) instead of retrying blindly (`auth_expired`, do not).
+
+---
+
 ## How limits are enforced
 
 1. **Soft limits, not hard ones.** The gateway caps each account at
@@ -258,6 +326,21 @@ model can react rather than seeing a stack trace.
 
 Every limit is configuration, not a constant. Gmail changes its published numbers; this file and
 `docs/google-cloud-setup.md` record the values the defaults were chosen from.
+
+---
+
+## When not to use this
+
+- **You need to read mail.** Fmaiily requests `gmail.send` and nothing else. It will not become a
+  mail client, and it deliberately cannot read your inbox.
+- **You want someone else's infrastructure.** There is no hosted version. That is the trade: the
+  credential never leaves your host.
+- **You are sending bulk or unsolicited mail.** Fmaiily stays well inside Gmail's limits as a
+  safety margin. It is not permission, and Gmail's Terms of Service still apply.
+- **You need multi-tenant isolation.** The auth model assumes one operator issuing keys to their own
+  agents. It is not a public SaaS backend.
+- **You need guaranteed delivery.** A queued job is retried with backoff, but there is no delivery
+  receipt beyond Gmail's own message id.
 
 ---
 
@@ -306,7 +389,7 @@ so both are safe to pipe.
 against the soft limit, queue depth, and the next send time. Server-rendered, no JavaScript, and no
 external assets, so it works on a host with no internet access.
 
-## Workspace: sending as a user without any consent flow
+## Workspace: unattended sending
 
 With a Workspace admin's domain-wide delegation grant, Fmaiily can send as a Workspace mailbox
 unattended - no interactive consent, and no refresh token stored at all:

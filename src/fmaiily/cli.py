@@ -305,7 +305,13 @@ def keys_create(
     )
     _echo_json({"id": context.key_id, "name": context.name, "scopes": list(parsed)})
     typer.secho(f"\n{full_key}", fg=typer.colors.GREEN)
-    typer.secho("This is the only time the key is shown. Store it now.", fg=typer.colors.YELLOW)
+    # The warning goes to stderr so that `fmaiily keys create agent | tail -1` yields the key,
+    # matching gen-key and the documented "logs and human messages go to stderr" contract.
+    typer.secho(
+        "This is the only time the key is shown. Store it now.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
 
 
 @keys_app.command("list")

@@ -9,7 +9,12 @@ already merged.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `fmaiily keys create` printed its "this is the only time the key is shown" warning to stdout
+  instead of stderr, so `fmaiily keys create agent | tail -1` returned the warning text rather than
+  the key - the exact pattern the README recommends. The secret now goes to stdout and the warning
+  to stderr, matching `gen-key` and the documented contract. A test pins both commands.
 
 ## [0.1.0] - 2026-09-26
 

@@ -41,6 +41,13 @@ def _invoke(*args: str):
     return runner.invoke(app, list(args))
 
 
+def _verify_created_key(candidate: str) -> bool:
+    """True when `candidate` is a full, well-formed API key rather than a warning line."""
+    import re
+
+    return re.fullmatch(r"fmg_[0-9a-f]{8}_[A-Za-z0-9_-]{43}", candidate) is not None
+
+
 def test_help_lists_every_command() -> None:
     result = _invoke("--help")
     assert result.exit_code == 0
@@ -232,3 +239,25 @@ def test_purge_history(cli_env: Path) -> None:
     result = _invoke("purge-history", "--days", "0")
     assert result.exit_code == 0
     assert "removed 0 history rows" in result.output
+
+
+def test_one_time_secrets_go_to_stdout_and_warnings_to_stderr(cli_env: Path) -> None:
+    """A user pipes the key into a variable; the warning must not land in it.
+
+    The README promises that human messages go to stderr, so that
+    `fmaiily keys create agent | tail -1` yields the key. `gen-key` already behaves this way;
+    `keys create` did not, and would have handed back the warning text instead of the credential.
+    """
+    assert _invoke("migrate").exit_code == 0
+
+    key_result = _invoke("gen-key")
+    assert "Store this now" not in key_result.stdout
+    assert "Store this now" in key_result.stderr
+    assert key_result.stdout.strip().splitlines()[-1].startswith("Store") is False
+
+    created = _invoke("keys", "create", "agent", "--scopes", "send")
+    assert "only time the key is shown" not in created.stdout
+    assert "only time the key is shown" in created.stderr
+    # The last line of stdout is the credential, so `| tail -1` captures exactly one full key.
+    assert created.stdout.strip().splitlines()[-1].startswith("fmg_")
+    assert _verify_created_key(created.stdout.strip().splitlines()[-1])
