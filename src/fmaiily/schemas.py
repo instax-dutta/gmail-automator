@@ -45,6 +45,10 @@ class SendEmailRequest(BaseModel):
 class BatchSendRequest(BaseModel):
     account: str | None = None
     emails: list[SendEmailRequest] = Field(min_length=1, max_length=50)
+    #: One decision for the whole batch: a per-message `wait` inside `emails` is not honored,
+    #: because pacing means the messages complete at different times anyway. Defaults to False so
+    #: a bulk submit returns immediately with job ids.
+    wait: bool = False
 
 
 class SendEmailResponse(BaseModel):

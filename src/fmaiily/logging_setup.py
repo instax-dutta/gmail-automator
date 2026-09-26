@@ -12,6 +12,10 @@ REDACTED = "[redacted]"
 #: Any event key containing one of these fragments has its string/bytes value replaced with
 #: ``REDACTED``. Matching is case-insensitive, and ``-``/``.``/spaces in the key are normalized to
 #: ``_`` first, so ``refresh_token``, ``X-Api-Key``, and ``client.secret`` are all covered.
+#:
+#: The OAuth authorization code gets explicit entries rather than a bare ``code`` fragment: a bare
+#: ``code`` would also swallow ``error_code`` and ``status_code``, which are exactly the fields an
+#: operator needs when a send is refused. Nothing in the gateway logs a raw OAuth code either way.
 SECRET_KEY_FRAGMENTS: tuple[str, ...] = (
     "token",
     "secret",
@@ -20,9 +24,12 @@ SECRET_KEY_FRAGMENTS: tuple[str, ...] = (
     "apikey",
     "password",
     "passwd",
-    "code",
     "credential",
     "cookie",
+    "auth_code",
+    "authorization_code",
+    "verification_code",
+    "otp",
 )
 
 
