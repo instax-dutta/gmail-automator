@@ -6,12 +6,19 @@ import os
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from fmaiily.errors import GatewayError
+
 VERSION = "v1"
 NONCE_BYTES = 12
 
 
-class CryptoError(Exception):
+class CryptoError(GatewayError):
     """Raised when ciphertext cannot be decrypted or has an invalid format."""
+
+    code, http_status = "crypto_error", 500
+
+    def __init__(self, message: str, *, details: dict[str, object] | None = None) -> None:
+        super().__init__(message, details=details)
 
 
 def _b64e(data: bytes) -> str:
