@@ -30,6 +30,14 @@ class AccountService:
         self._clock = clock
         self._settings = settings
 
+    @property
+    def session_factory(self) -> sessionmaker[Session]:
+        return self._session_factory
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings
+
     # ------------------------------------------------------------------ writes
 
     def upsert_oauth_account(
@@ -178,21 +186,34 @@ class AccountService:
             return accounts
 
     def resolve(self, email: str | None) -> Account:
-        """Pick the account to send from: the requested one, or the only active one."""
+        """Pick the account to send from: the requested one, or the only active one.
+
+        When nothing is active but a single account is on file it is still returned, so the
+        caller can say "this account is revoked" instead of the misleading "nothing connected".
+        """
         if email:
             return self.get(email)
         active = self.list_active()
+        if len(active) == 1:
+            return active[0]
         if not active:
+            everything = self.list_all()
+            if len(everything) == 1:
+                return everything[0]
+            if everything:
+                statuses = sorted({a.email: a.status for a in everything}.items())
+                raise AccountNotFound(
+                    "no connected account is active; reconnect the account you want to use",
+                    details={"accounts": dict(statuses)},
+                )
             raise AccountNotFound(
                 "no Gmail account is connected; run the OAuth connect flow first",
                 details={"account": email},
             )
-        if len(active) > 1:
-            raise InvalidRequest(
-                "multiple Gmail accounts are connected; specify which one to use",
-                details={"candidates": [a.email for a in active]},
-            )
-        return active[0]
+        raise InvalidRequest(
+            "multiple Gmail accounts are connected; specify which one to use",
+            details={"candidates": [a.email for a in active]},
+        )
 
     def summaries(self) -> list[AccountSummary]:
         return [
