@@ -66,7 +66,20 @@ class Container:
     drafts: DraftService | None = None
     metrics: Metrics | None = None
     key_limiter: KeyRateLimiter | None = None
+    service_account: Any | None = None
     extras: dict[str, Any] = field(default_factory=dict)
+
+
+def _load_service_account(settings: Settings) -> Any:
+    """Read the service-account key at startup, so a bad path fails loudly and immediately."""
+    if not settings.is_service_account_configured:
+        return None
+    from fmaiily.service_accounts import load_service_account_key
+
+    return load_service_account_key(
+        settings.service_account_key_file,  # type: ignore[arg-type]
+        subject=settings.service_account_subject,  # type: ignore[arg-type]
+    )
 
 
 def _decode_key_base64(value: str) -> bytes:
@@ -82,6 +95,7 @@ def build_container(
     clock: Clock | None = None,
     sleeper: Sleeper | None = None,
     http: httpx.Client | None = None,
+    token_request: Any | None = None,
 ) -> Container:
     resolved_engine = engine or create_db_engine(settings.database_url)
     session_factory = create_session_factory(resolved_engine)
@@ -103,6 +117,7 @@ def build_container(
         settings=settings,
         sleeper=sleeper,
     )
+    service_account = _load_service_account(settings)
     tokens = TokenManager(
         session_factory=session_factory,
         accounts=accounts,
@@ -110,6 +125,8 @@ def build_container(
         clock=resolved_clock,
         settings=settings,
         http=http_client,
+        service_account=service_account,
+        token_request=token_request,
     )
     oauth = OAuthService(
         session_factory=session_factory,
@@ -154,6 +171,7 @@ def build_container(
         sender=sender,
         metrics=metrics,
         key_limiter=key_limiter,
+        service_account=service_account,
     )
     # Attached after construction because a few services need the container they live in.
     from fmaiily.drafts import DraftService

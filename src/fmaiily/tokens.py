@@ -12,6 +12,12 @@ from fmaiily.clock import Clock
 from fmaiily.config import Settings
 from fmaiily.crypto import TokenCipher
 from fmaiily.errors import SendFailed
+from fmaiily.service_accounts import (
+    SERVICE_ACCOUNT_SCOPES,
+    ServiceAccountConfig,
+    TokenRequest,
+    mint_access_token,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +47,8 @@ class TokenManager:
         clock: Clock,
         settings: Settings,
         http: httpx.Client | None = None,
+        service_account: ServiceAccountConfig | None = None,
+        token_request: TokenRequest | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._accounts = accounts
@@ -48,6 +56,8 @@ class TokenManager:
         self._clock = clock
         self._settings = settings
         self._http = http or httpx.Client(timeout=settings.request_timeout_seconds)
+        self._service_account = service_account
+        self._token_request = token_request or _google_request()
 
     @property
     def settings(self) -> Settings:
@@ -57,10 +67,14 @@ class TokenManager:
         now = now or self._clock.now()
         account = self._accounts.get(email)
         if account.status == "revoked":
+            # Checked before the service-account branch too: revoking must stop sending whether
+            # the account authenticates by OAuth or by impersonation.
             raise SendFailed(
                 f"account {email} is revoked; reconnect it before sending",
                 details={"account": email},
             )
+        if account.auth_type == "service_account":
+            return self._service_account_token(account.email, now=now)
         if not account.access_token_enc:
             raise SendFailed(
                 f"account {email} has no access token; reconnect it",
@@ -143,6 +157,29 @@ class TokenManager:
         )
         return AccessToken(token=access_token, expiry=expiry, refreshed=True)
 
+    def _service_account_token(self, email: str, *, now: datetime) -> AccessToken:
+        """Mint an access token for an impersonated Workspace mailbox.
+
+        There is no refresh token in this path, so nothing is persisted and nothing can leak; the
+        assertion is rebuilt on demand and the result lives only in memory.
+        """
+        config = self._service_account
+        if config is None:
+            raise SendFailed(
+                f"account {email} is a service account but no service account key is configured",
+                details={"account": email},
+            )
+        if config.subject.lower() != email.lower():
+            raise SendFailed(
+                f"the configured service account impersonates {config.subject}, not {email}",
+                details={"account": email, "subject": config.subject},
+            )
+        token, expiry = mint_access_token(
+            config, request=self._token_request, now=now, scopes=tuple(account_scopes(config))
+        )
+        self._accounts.record_refresh(email, expiry=expiry)
+        return AccessToken(token=token, expiry=expiry, refreshed=True)
+
     def invalidate(self, email: str) -> None:
         self._accounts.expire_token(email)
 
@@ -151,6 +188,17 @@ class TokenManager:
             return True
         leeway = timedelta(seconds=self._settings.token_refresh_leeway_seconds)
         return expiry - leeway <= now
+
+
+def account_scopes(config: ServiceAccountConfig) -> tuple[str, ...]:
+    return config.scopes or SERVICE_ACCOUNT_SCOPES
+
+
+def _google_request() -> TokenRequest:
+    """google-auth's transport, created lazily so tests never touch the network."""
+    from google.auth.transport.requests import Request
+
+    return Request()
 
 
 def _error_detail(response: httpx.Response) -> str:
