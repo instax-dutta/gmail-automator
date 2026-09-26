@@ -74,7 +74,7 @@ def send_batch(
     """The whole batch is pre-flighted first, so a refusal leaves nothing queued.
 
     Pacing is applied by the queue: the jobs are scheduled `send_interval_seconds` apart rather
-    than sent back to back.
+    than sent back to back. `wait` applies to the batch as a whole - see `BatchSendRequest`.
     """
     accounts = require(container, "accounts")
     resolved = accounts.resolve(payload.account)
@@ -84,6 +84,7 @@ def send_batch(
         messages=[to_outgoing_message(item, resolved.email) for item in payload.emails],
         source="api",
         api_key=caller,
+        wait=payload.wait,
     )
     return BatchSendResponse(jobs=[_to_response(item) for item in outcome.outcomes])
 

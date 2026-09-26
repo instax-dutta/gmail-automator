@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from starlette.routing import Match, Mount
 
 from fmaiily import __version__
 from fmaiily.api_keys import bearer_token_from_header
@@ -44,40 +45,72 @@ class _WorkerThread:
         self._thread.join(timeout=timeout)
 
 
-class McpAuthMiddleware:
-    """Guards the mounted MCP endpoint with the same API key as the REST surface.
+class McpMount(Mount):
+    """Serves the MCP endpoint from the root of the app, and guards it with the gateway key.
 
-    MCP over stdio is a local process and needs no HTTP auth; this middleware only applies to the
-    Streamable HTTP mount, which is reachable over the network.
+    Two Starlette facts force this shape:
+
+    * `Mount("/mcp", app=...)` never matches the path `/mcp` itself - only `/mcp/...` - so a
+      conventional mount answers every MCP request with a 307 redirect that MCP clients do not
+      follow for POST.
+    * The MCP server registers its endpoint as an absolute route (`/mcp`), so a mount that does
+      match would strip the prefix and the inner router would not find its own route.
+
+    So the mount lives at the root, matches everything, and hands anything outside the MCP prefix
+    straight back to the parent app. `_SKIP` stops that hand-back from recursing, which lets the
+    normal router produce the correct 404/405 for every other path.
+
+    MCP over stdio is a local process and needs no HTTP auth; this only applies to the Streamable
+    HTTP endpoint, which is reachable over the network.
     """
 
-    def __init__(self, app: Any, *, settings: Settings, mount_path: str) -> None:
-        self.app = app
-        self.settings = settings
-        self.mount_path = mount_path.rstrip("/")
+    _SKIP = "fmaiily.skip_mcp_mount"
 
-    async def __call__(
+    def __init__(
+        self,
+        *,
+        mcp_app: Any,
+        parent: Any,
+        settings: Settings,
+        mount_path: str,
+    ) -> None:
+        self._mcp_app = mcp_app
+        self._parent = parent
+        self._settings = settings
+        self._path = mount_path.rstrip("/") or "/"
+        super().__init__("/", app=mcp_app, name="mcp")
+
+    def matches(self, scope: MutableMapping[str, Any]) -> tuple[Match, MutableMapping[str, Any]]:
+        if scope.get(self._SKIP):
+            return Match.NONE, {}
+        return super().matches(scope)
+
+    async def handle(
         self,
         scope: MutableMapping[str, Any],
         receive: Callable[[], Awaitable[MutableMapping[str, Any]]],
         send: Callable[[MutableMapping[str, Any]], Awaitable[None]],
     ) -> None:
-        if scope.get("type") != "http" or not scope.get("path", "").startswith(self.mount_path):
-            await self.app(scope, receive, send)
+        if scope.get("type") != "http":
+            await self._mcp_app(scope, receive, send)
             return
-        if self.settings.auth_mode == "none":
-            await self.app(scope, receive, send)
+        path = scope.get("path", "")
+        if not (path == self._path or path.startswith(f"{self._path}/")):
+            scope = {**scope, self._SKIP: True}
+            await self._parent(scope, receive, send)
             return
-        headers = {
-            k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])
-        }
-        try:
-            bearer_token_from_header(headers.get("authorization"))
-        except GatewayError as exc:
-            response = error_response(exc.code, exc.message, exc.http_status)
-            await response(scope, receive, send)
-            return
-        await self.app(scope, receive, send)
+        if self._settings.auth_mode != "none":
+            headers = {
+                key.decode("latin-1").lower(): value.decode("latin-1")
+                for key, value in scope.get("headers", [])
+            }
+            try:
+                bearer_token_from_header(headers.get("authorization"))
+            except GatewayError as exc:
+                response = error_response(exc.code, exc.message, exc.http_status)
+                await response(scope, receive, send)
+                return
+        await self._mcp_app(scope, receive, send)
 
 
 def _warn_if_unauthenticated_on_public_interface(settings: Settings) -> None:
@@ -177,9 +210,6 @@ def create_app(
     register_exception_handlers(app)
     _mount_routes(app)
 
-    if mount_mcp:
-        _mount_mcp(app, settings or (container.settings if container else None))
-
     @app.get("/", include_in_schema=False)
     def root() -> JSONResponse:
         configured: Settings | None = settings or (container.settings if container else None)
@@ -192,6 +222,10 @@ def create_app(
                 "mcp": configured.mcp_mount_path if configured else None,
             }
         )
+
+    # Mounted last: the MCP shim is mounted at the root, so it must not shadow anything above.
+    if mount_mcp:
+        _mount_mcp(app, settings or (container.settings if container else None))
 
     return app
 
@@ -224,8 +258,9 @@ def _mount_mcp(app: FastAPI, settings: Settings | None) -> None:
     app.state.mcp_http_app = http_app
     app.state.mcp_session_manager = mcp.session_manager
     path = settings.mcp_mount_path
-    guarded: Any = McpAuthMiddleware(http_app, settings=settings, mount_path=path)
-    app.mount(path, guarded)
+    app.router.routes.append(
+        McpMount(mcp_app=http_app, parent=app, settings=settings, mount_path=path)
+    )
     _log.info("mcp_mounted", path=path)
 
 
@@ -241,7 +276,7 @@ def default_settings() -> Settings:
 
 __all__ = [
     "LOOPBACK_HOSTS",
-    "McpAuthMiddleware",
+    "McpMount",
     "create_app",
     "default_settings",
 ]

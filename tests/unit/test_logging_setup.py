@@ -13,7 +13,8 @@ SECRET_FIELDS = (
     "password",
     "authorization",
     "client_secret",
-    "code",
+    "authorization_code",
+    "otp",
 )
 
 
@@ -52,7 +53,8 @@ def test_secrets_are_redacted_in_emitted_events(caplog: pytest.LogCaptureFixture
             password="hunter2",
             authorization="Bearer abc",
             client_secret="GOCSPX-xyz",
-            code="4/abc",
+            authorization_code="4/abc",
+            otp="123456",
         )
     event = _emitted(caplog)[-1]
     for field in SECRET_FIELDS:
@@ -76,12 +78,12 @@ def test_redaction_recurses_into_nested_structures() -> None:
         {
             "event": "x",
             "account": {"email": "me@x.com", "refresh_token": "1//leak"},
-            "history": [{"api_key": "fmg_leak"}, {"code": "4/abc"}],
+            "history": [{"api_key": "fmg_leak"}, {"authorization_code": "4/abc"}],
             "tuple": ("secret", "fine"),
         },
     )
     assert event["account"] == {"email": "me@x.com", "refresh_token": REDACTED}
-    assert event["history"] == [{"api_key": REDACTED}, {"code": REDACTED}]
+    assert event["history"] == [{"api_key": REDACTED}, {"authorization_code": REDACTED}]
     # a bare string inside a sequence has no key, so key-based redaction leaves it alone
     assert event["tuple"] == ("secret", "fine")
 
@@ -90,6 +92,17 @@ def test_redaction_is_key_based_so_bodies_survive() -> None:
     body = "your verification code is 123456, ref code 4/abc"
     event = redact_processor(None, "info", {"event": "x", "body": body})  # type: ignore[arg-type]
     assert event["body"] == body
+
+
+def test_operational_code_fields_survive_redaction() -> None:
+    """`error_code` is what an operator reads when a send is refused; it must not be redacted."""
+    event = redact_processor(
+        None,  # type: ignore[arg-type]
+        "info",
+        {"event": "send_failed", "error_code": "quota_exceeded", "status_code": 429},
+    )
+    assert event["error_code"] == "quota_exceeded"
+    assert event["status_code"] == 429
 
 
 def test_redaction_is_case_insensitive_and_normalizes_separators() -> None:
