@@ -143,6 +143,54 @@ when capacity frees up.
 
 ---
 
+## Service accounts (Workspace only)
+
+A Workspace administrator can authorize a service account to impersonate a user, which lets Fmaiily
+send unattended with no browser consent step. The admin-side steps:
+
+1. In the Cloud project, enable the **Gmail API**.
+2. Create a service account and download its JSON key. Treat that file as a credential: it can mint
+   tokens as the impersonated user.
+3. On that service account, add a **Domain-wide delegation** client with the scope
+
+   ```
+   https://www.googleapis.com/auth/gmail.send
+   ```
+
+   and record the numeric **Client ID**. That is the value the Workspace admin authorizes in step 4.
+4. In the Workspace Admin console: **Security -> Access and data control -> API controls ->
+   Domain-wide delegation**, and add the client ID from step 3 with that scope.
+5. Point Fmaiily at the key and the user to impersonate:
+
+   ```dotenv
+   FMAIILY_SERVICE_ACCOUNT_KEY_FILE=/run/secrets/fmaiily-sa.json
+   FMAIILY_SERVICE_ACCOUNT_SUBJECT=agent@acme.co
+   ```
+
+6. Register the mailbox once:
+
+   ```bash
+   uv run fmaiily accounts list
+   ```
+
+   It will appear as `service_account` / `workspace` in `fmaiily status` after the first send, or
+   connect it through the normal flow if you also want an OAuth grant on the same address.
+
+Notes:
+
+- Only `gmail.send` is requested. Domain-wide delegation is bounded by the admin grant, so asking
+  for more scope would only widen the blast radius.
+- No refresh token is stored for a service account. Nothing is persisted, so there is nothing to
+  leak; a token is minted per send.
+- Quota and pacing apply exactly as for an OAuth account - Gmail does not treat impersonated sends
+  differently.
+- `fmaiily accounts disconnect <address>` stops sending for it, because the account status is
+  checked before a token is minted.
+- Rotation of the service account key is just a file swap and a restart; no database migration is
+  involved, because no token is stored.
+
+---
+
 ## Troubleshooting
 
 **`authorization_url` returns "OAuth is not configured"**
