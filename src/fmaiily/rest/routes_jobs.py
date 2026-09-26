@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
@@ -7,12 +9,13 @@ from fmaiily.api_keys import ApiKeyContext
 from fmaiily.container import require
 from fmaiily.errors import AccountNotFound, Forbidden
 from fmaiily.history import HistoryService
-from fmaiily.rest.deps import CallerDep, ContainerDep, authenticate
+from fmaiily.rest.deps import ContainerDep, authenticate, require_read
 from fmaiily.schemas import HistoryItem, JobStatusResponse
 
 #: Every /v1 router requires a resolved caller. Routes that need the identity itself
 #: declare `CallerDep` too; FastAPI caches the dependency, so it authenticates once.
 AUTH = [Depends(authenticate)]
+ReadCaller = Annotated[ApiKeyContext, Depends(require_read)]
 
 router = APIRouter(prefix="/v1", tags=["jobs"], dependencies=AUTH)
 
@@ -22,7 +25,7 @@ class HistoryResponse(BaseModel):
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse, summary="Status of one send")
-def job_status(container: ContainerDep, caller: CallerDep, job_id: int) -> JobStatusResponse:
+def job_status(container: ContainerDep, caller: ReadCaller, job_id: int) -> JobStatusResponse:
     history: HistoryService = require(container, "history")
     status = history.job_status(job_id)
     if status is None:
@@ -34,7 +37,7 @@ def job_status(container: ContainerDep, caller: CallerDep, job_id: int) -> JobSt
 @router.get("/history", response_model=HistoryResponse, summary="Recent sends, newest first")
 def history(
     container: ContainerDep,
-    caller: CallerDep,
+    caller: ReadCaller,
     account: str | None = Query(default=None),
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),

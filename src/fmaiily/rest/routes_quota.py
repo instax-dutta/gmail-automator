@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from fmaiily.api_keys import ApiKeyContext
 from fmaiily.container import require
 from fmaiily.quota import QuotaService, QuotaSnapshot
-from fmaiily.rest.deps import ContainerDep, authenticate
+from fmaiily.rest.deps import ContainerDep, authenticate, require_read
 from fmaiily.schemas import QuotaResponse
 
 #: Every /v1 router requires a resolved caller. Routes that need the identity itself
 #: declare `CallerDep` too; FastAPI caches the dependency, so it authenticates once.
 AUTH = [Depends(authenticate)]
+ReadCaller = Annotated[ApiKeyContext, Depends(require_read)]
 
 router = APIRouter(prefix="/v1/quota", tags=["quota"], dependencies=AUTH)
 
@@ -20,7 +24,7 @@ class QuotaListResponse(BaseModel):
 
 
 @router.get("", response_model=QuotaListResponse, summary="Quota for every connected account")
-def list_quota(container: ContainerDep) -> QuotaListResponse:
+def list_quota(container: ContainerDep, _caller: ReadCaller) -> QuotaListResponse:
     quota: QuotaService = require(container, "quota")
     accounts = require(container, "accounts")
     now = container.clock.now()
@@ -34,7 +38,7 @@ def list_quota(container: ContainerDep) -> QuotaListResponse:
 @router.get(
     "/{account}", response_model=QuotaResponse, summary="Remaining 24h capacity for one account"
 )
-def get_quota(container: ContainerDep, account: str) -> QuotaResponse:
+def get_quota(container: ContainerDep, account: str, _caller: ReadCaller) -> QuotaResponse:
     quota: QuotaService = require(container, "quota")
     resolved = require(container, "accounts").resolve(account)
     return _to_response(quota.snapshot(resolved, now=container.clock.now()))

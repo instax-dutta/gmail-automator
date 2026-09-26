@@ -209,6 +209,7 @@ def create_app(
 
     register_exception_handlers(app)
     _mount_routes(app)
+    _mount_metrics_middleware(app)
 
     @app.get("/", include_in_schema=False)
     def root() -> JSONResponse:
@@ -228,6 +229,29 @@ def create_app(
         _mount_mcp(app, settings or (container.settings if container else None))
 
     return app
+
+
+def _mount_metrics_middleware(app: FastAPI) -> None:
+    """Count HTTP requests by method, route template, and status.
+
+    The *template* (`/v1/jobs/{job_id}`) is labelled, never the concrete path, so a job id or an
+    email address can never become an unbounded metric label.
+    """
+
+    @app.middleware("http")
+    async def _count(request: Any, call_next: Any) -> Any:
+        response = await call_next(request)
+        container = getattr(app.state, "container", None)
+        registry = getattr(container, "metrics", None) if container else None
+        if registry is not None:
+            template = _route_template(request)
+            registry.record_http_request(request.method, template, response.status_code)
+        return response
+
+    def _route_template(request: Any) -> str:
+        route = request.scope.get("route")
+        path = getattr(route, "path", None)
+        return path if isinstance(path, str) else "unmatched"
 
 
 def _mount_routes(app: FastAPI) -> None:
