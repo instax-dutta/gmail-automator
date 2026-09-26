@@ -89,7 +89,9 @@ class Settings(BaseSettings):
     port: int = 8000
     request_timeout_seconds: float = 30.0
 
-    @field_validator("oauth_scopes", "attachment_allowed_dirs", mode="before")
+    @field_validator(
+        "oauth_scopes", "attachment_allowed_dirs", "service_account_scopes", mode="before"
+    )
     @classmethod
     def _split_csv(cls, value: object) -> object:
         if isinstance(value, str):
