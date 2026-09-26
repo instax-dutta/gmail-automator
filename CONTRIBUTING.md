@@ -84,8 +84,9 @@ or from a checkout, the exact command or request, and the log output. **Redact t
 the encryption key before pasting** - `FMAIILY_TOKEN_ENCRYPTION_KEY` in particular will unlock every
 stored credential.
 
-If you think you have found a security issue, do not open a public issue. See
-[`SECURITY.md`](SECURITY.md).
+If you think you have found a security issue, do not open a public issue for it. Contact the
+maintainer directly through the GitHub profile, agree on a private channel, and open the issue only
+once a fix exists.
 
 ## Licence
 

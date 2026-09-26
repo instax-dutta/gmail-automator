@@ -64,7 +64,6 @@ Homepage = "https://github.com/instax-dutta/gmail-automator"
 Source = "https://github.com/instax-dutta/gmail-automator"
 Issues = "https://github.com/instax-dutta/gmail-automator/issues"
 Changelog = "https://github.com/instax-dutta/gmail-automator/blob/main/CHANGELOG.md"
-Security = "https://github.com/instax-dutta/gmail-automator/security/policy"
 Discussions = "https://github.com/instax-dutta/gmail-automator/discussions"
 
 [project.scripts]
@@ -88,7 +87,6 @@ include = [
   "/README.md",
   "/CHANGELOG.md",
   "/CONTRIBUTING.md",
-  "/SECURITY.md",
   "/CODE_OF_CONDUCT.md",
   "/LICENSE",
 ]

@@ -18,7 +18,7 @@ official sending limits so the account is never locked.
   resumes instead of losing the job.
 
 **Documentation:** [Google Cloud setup](docs/google-cloud-setup.md) · [Operations runbook](docs/operations.md) ·
-[Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+[Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 > The GitHub repository is `gmail-automator`; the Python distribution and import package are
 > `fmaiily`, and the CLI is `fmaiily`. They are the same thing.
@@ -351,8 +351,6 @@ without binding a port.
 - API keys are stored as a prefix plus a SHA-256 hash and compared with `hmac.compare_digest`.
 - The log pipeline redacts secret-looking keys recursively, and the container runs as uid 10001
   with a single writable volume.
-
-Full posture, and how to report a problem: [`SECURITY.md`](SECURITY.md).
 
 ## Your responsibilities
 
