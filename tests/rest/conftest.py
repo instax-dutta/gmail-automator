@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -57,8 +58,8 @@ def connected(http_container: Container) -> str:
 
 
 @pytest.fixture
-def authed_client(http_container: Container) -> Iterator[tuple[TestClient, str]]:
-    """An app with `auth_mode=api_key` plus one issued key."""
+def key_client(http_container: Container) -> Iterator[tuple[TestClient, Any]]:
+    """An app in `auth_mode=api_key`, plus a factory for issuing keys against it."""
     from fmaiily.api_keys import ApiKeyService
 
     container = http_container
@@ -68,10 +69,22 @@ def authed_client(http_container: Container) -> Iterator[tuple[TestClient, str]]
             "bootstrap_admin_key": SecretStr("fmg_REDACTED_IN_HISTORY"),
         }
     )
-    _, full_key = ApiKeyService(container=container).create(name="agent", scopes=("send", "read"))
+
+    def issue(**kwargs: Any) -> str:
+        _, full_key = ApiKeyService(container=container).create(
+            name=kwargs.pop("name", "agent"), **kwargs
+        )
+        return full_key
+
     app = create_app(container, settings=container.settings, start_worker=False)
     with TestClient(app) as test_client:
-        yield test_client, full_key
+        yield test_client, issue
+
+
+@pytest.fixture
+def authed_client(key_client) -> tuple[TestClient, str]:
+    test_client, issue = key_client
+    return test_client, issue(name="agent", scopes=("send", "read"))
 
 
 @pytest.fixture(autouse=True)

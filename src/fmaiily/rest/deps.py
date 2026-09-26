@@ -49,11 +49,34 @@ def authenticate(
     from fmaiily.api_keys import ApiKeyService
 
     try:
-        return ApiKeyService(container=container).verify(token)
+        context = ApiKeyService(container=container).verify(token)
     except GatewayError:
         raise
     except Exception as exc:
         raise Unauthorized("API key could not be verified") from exc
+
+    _enforce_key_rate_limit(container, context)
+    return context
+
+
+def _enforce_key_rate_limit(container: Container, context: ApiKeyContext) -> None:
+    """PRD 5.3: an optional per-client request cap, on top of Gmail's own limits.
+
+    Only enforced for keys that exist in the database; the bootstrap admin key is the operator's
+    own escape hatch and is never rate limited.
+    """
+    limiter = container.key_limiter
+    if limiter is None or context.key_id is None:
+        return
+    from sqlalchemy import select
+
+    from fmaiily.models import ApiKeyRow
+
+    with container.session_factory() as session:
+        row = session.scalar(select(ApiKeyRow).where(ApiKeyRow.id == context.key_id))
+        limit = row.rate_limit_per_minute if row is not None else None
+    if limit:
+        limiter.check(context.key_id, limit)
 
 
 ContainerDep = Annotated[Container, Depends(get_container)]

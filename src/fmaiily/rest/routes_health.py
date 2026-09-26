@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from fmaiily import __version__
 from fmaiily.container import require
+from fmaiily.metrics import Metrics
 from fmaiily.rest.deps import ContainerDep
 
 router = APIRouter(tags=["health"])
@@ -42,6 +44,25 @@ def health(container: ContainerDep) -> HealthResponse:
         accounts_connected=len(accounts.list_active()),
         queue_depth=queue.depth(),
     )
+
+
+@router.get(
+    "/metrics",
+    response_class=PlainTextResponse,
+    summary="Prometheus metrics",
+)
+def metrics(container: ContainerDep) -> PlainTextResponse:
+    """Prometheus exposition for this process.
+
+    Rendered from a registry owned by this container, so several gateway processes on one host do
+    not collide (master plan R11). The bind address is loopback by default; if you expose it, keep
+    it behind the same control as the send API - these numbers include account addresses.
+    """
+    registry: Metrics | None = container.metrics
+    if registry is None:
+        registry = Metrics()
+        container.metrics = registry
+    return PlainTextResponse(registry.render(), media_type=registry.content_type)
 
 
 def _dialect(container: ContainerDep) -> str:

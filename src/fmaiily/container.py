@@ -14,9 +14,11 @@ from fmaiily.crypto import TokenCipher
 from fmaiily.db import create_db_engine, create_session_factory
 from fmaiily.gmail.client import GoogleGmailTransport, SendResult
 from fmaiily.history import HistoryService
+from fmaiily.metrics import Metrics
 from fmaiily.oauth import OAuthService
 from fmaiily.queue import QueueService
 from fmaiily.quota import QuotaService
+from fmaiily.rate_limit import KeyRateLimiter
 from fmaiily.send import SendService
 from fmaiily.tokens import TokenManager
 
@@ -53,8 +55,8 @@ class Container:
     oauth: OAuthService | None = None
     history: HistoryService | None = None
     sender: SendService | None = None
-    metrics: Any | None = None
-    key_limiter: Any | None = None
+    metrics: Metrics | None = None
+    key_limiter: KeyRateLimiter | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
 
@@ -110,6 +112,9 @@ def build_container(
         sleeper=sleeper,
     )
 
+    metrics = Metrics()
+    key_limiter = KeyRateLimiter(clock=resolved_clock)
+
     return Container(
         settings=settings,
         engine=resolved_engine,
@@ -130,6 +135,8 @@ def build_container(
         oauth=oauth,
         history=history,
         sender=sender,
+        metrics=metrics,
+        key_limiter=key_limiter,
     )
 
 
