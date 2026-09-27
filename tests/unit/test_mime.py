@@ -4,8 +4,8 @@ from email.policy import default as default_policy
 
 import pytest
 
-from fmaiily.errors import InvalidRequest
-from fmaiily.gmail.mime import (
+from gmail_automator.errors import InvalidRequest
+from gmail_automator.gmail.mime import (
     Attachment,
     OutgoingMessage,
     build_mime,

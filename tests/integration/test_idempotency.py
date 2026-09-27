@@ -11,12 +11,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from fmaiily.api_keys import ApiKeyContext
-from fmaiily.errors import DuplicateRequest
-from fmaiily.gmail.client import SendResult
-from fmaiily.gmail.mime import OutgoingMessage
-from fmaiily.schemas import SendEmailRequest, to_outgoing_message
-from fmaiily.send import SendService, request_fingerprint
+from gmail_automator.api_keys import ApiKeyContext
+from gmail_automator.errors import DuplicateRequest
+from gmail_automator.gmail.client import SendResult
+from gmail_automator.gmail.mime import OutgoingMessage
+from gmail_automator.schemas import SendEmailRequest, to_outgoing_message
+from gmail_automator.send import SendService, request_fingerprint
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 HASH_A = "a" * 64
@@ -84,7 +84,7 @@ def test_a_key_reused_without_a_fingerprint_is_a_conflict_not_a_replay(sender, a
 
 
 def test_keys_are_scoped_per_client(sender, session_factory, account) -> None:
-    from fmaiily.models import ApiKeyRow
+    from gmail_automator.models import ApiKeyRow
 
     with session_factory() as session:
         for key_id in (1, 2):

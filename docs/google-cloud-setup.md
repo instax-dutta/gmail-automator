@@ -1,6 +1,6 @@
-# Google Cloud setup for Fmaiily
+# Google Cloud setup for gmail-automator
 
-Fmaiily uses the Google OAuth 2.0 authorization-code flow. It needs **one** thing from you: an
+gmail-automator uses the Google OAuth 2.0 authorization-code flow. It needs **one** thing from you: an
 OAuth client ID and secret from a Cloud project you control. There is no managed service, no
 billing, and no verification application.
 
@@ -11,7 +11,7 @@ Estimated time: 10 minutes.
 ## 1. Create a project
 
 1. Open <https://console.cloud.google.com/projectcreate>.
-2. Name it (for example `fmaiily`) and create it. Billing is not required.
+2. Name it (for example `gmail_automator`) and create it. Billing is not required.
 
 ## 2. Configure the OAuth consent screen
 
@@ -22,7 +22,7 @@ Estimated time: 10 minutes.
 4. Under **Data Access**, add the scope `.../auth/gmail.send`.
 5. Save.
 
-Fmaiily also requests `openid` and `email`. Those are non-sensitive OpenID Connect scopes and are
+gmail-automator also requests `openid` and `email`. Those are non-sensitive OpenID Connect scopes and are
 what let the gateway learn *which* address was connected, because `gmail.send` alone cannot read
 the mailbox profile. Add all three to the consent screen:
 
@@ -35,20 +35,20 @@ the mailbox profile. Add all three to the consent screen:
 > **Why not fewer scopes?** Without `openid`/`email` there is no supported way to learn the
 > address of the account that just consented, and `users.getProfile` is not covered by
 > `gmail.send`. Adding `gmail.readonly` would work too, but it would grant mailbox read access to
-> a service whose entire job is sending mail, so Fmaiily does not ask for it.
+> a service whose entire job is sending mail, so gmail-automator does not ask for it.
 
 ## 3. Create the OAuth client
 
 1. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
 2. **Application type: Web application**.
-3. **Name**: `fmaiily` (or anything you will recognise).
+3. **Name**: `gmail_automator` (or anything you will recognise).
 4. **Authorized redirect URIs**: add
 
    ```
    http://localhost:8000/v1/oauth/google/callback
    ```
 
-   The path must match `FMAIILY_OAUTH_REDIRECT_URI` exactly, including the scheme, host, port, and
+   The path must match `GMAIL_AUTOMATOR_OAUTH_REDIRECT_URI` exactly, including the scheme, host, port, and
    trailing path. Google compares this literally.
 
    - Running on your own machine: the value above is correct.
@@ -57,7 +57,7 @@ the mailbox profile. Add all three to the consent screen:
    - Running on a server: use `https://your-host/v1/oauth/google/callback`.
 5. Create. Copy the **Client ID** and **Client secret**.
 
-## 4. Point Fmaiily at them
+## 4. Point gmail-automator at them
 
 ```bash
 cp .env.example .env
@@ -65,10 +65,10 @@ $EDITOR .env
 ```
 
 ```dotenv
-FMAIILY_TOKEN_ENCRYPTION_KEY=<output of: fmaiily gen-key>
-FMAIILY_GOOGLE_OAUTH_CLIENT_ID=xxxxx.apps.googleusercontent.com
-FMAIILY_GOOGLE_OAUTH_CLIENT_SECRET=xxxxx
-FMAIILY_OAUTH_REDIRECT_URI=http://localhost:8000/v1/oauth/google/callback
+GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY=<output of: gmail-automator gen-key>
+GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_ID=xxxxx.apps.googleusercontent.com
+GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_SECRET=xxxxx
+GMAIL_AUTOMATOR_OAUTH_REDIRECT_URI=http://localhost:8000/v1/oauth/google/callback
 ```
 
 The client secret is a credential, not a password: it identifies your application to Google, it
@@ -79,9 +79,9 @@ repository.
 
 ```bash
 # print the consent URL
-docker compose exec fmaiily fmaiily accounts connect
+docker compose exec gmail_automator gmail-automator accounts connect
 # or, running from a checkout:
-uv run fmaiily accounts connect
+uv run gmail-automator accounts connect
 ```
 
 Open the printed URL in a browser, pick the Gmail account, and approve. Google redirects to the
@@ -91,35 +91,35 @@ account.
 You can do the same over HTTP:
 
 ```bash
-curl -s http://localhost:8000/v1/oauth/google/start -H "authorization: Bearer $FMAIILY_KEY"
+curl -s http://localhost:8000/v1/oauth/google/start -H "authorization: Bearer $GMAIL_AUTOMATOR_KEY"
 # -> {"authorization_url": "https://accounts.google.com/...","state": "..."}
 
 curl -s "http://localhost:8000/v1/oauth/google/callback?code=...&state=..." \
-     -H "authorization: Bearer $FMAIILY_KEY"
+     -H "authorization: Bearer $GMAIL_AUTOMATOR_KEY"
 # -> {"account": "you@gmail.com", "account_type": "personal", "scopes": [...]}
 ```
 
 The `state` parameter is single-use and expires after
-`FMAIILY_OAUTH_STATE_TTL_SECONDS` (default 600). Replaying it is rejected.
+`GMAIL_AUTOMATOR_OAUTH_STATE_TTL_SECONDS` (default 600). Replaying it is rejected.
 
 ## 6. Verify
 
 ```bash
-docker compose exec fmaiily fmaiily status
+docker compose exec gmail_automator gmail-automator status
 ```
 
 You should see the account, its soft message/recipient limits, and remaining capacity. Then send
 one real message:
 
 ```bash
-docker compose exec fmaiily fmaiily send-test someone@example.com
+docker compose exec gmail_automator gmail-automator send-test someone@example.com
 ```
 
 ---
 
-## Limits, and what Fmaiily does about them
+## Limits, and what gmail-automator does about them
 
-Gmail enforces these itself; Fmaiily's job is to stay well clear of them so an account is never
+Gmail enforces these itself; gmail-automator's job is to stay well clear of them so an account is never
 locked:
 
 | Limit                                   | Value                                    | Source                                |
@@ -131,9 +131,9 @@ locked:
 | `messages.send` API cost                 | 100 quota units                          | Gmail API usage limits                |
 | Per-user rate                            | 250 units/user/second moving average     | Gmail API usage limits                |
 
-Fmaiily enforces `limit x FMAIILY_SOFT_LIMIT_RATIO` (default 0.85) and **refuses before calling
+gmail-automator enforces `limit x GMAIL_AUTOMATOR_SOFT_LIMIT_RATIO` (default 0.85) and **refuses before calling
 Google**, so an agent gets `quota_exceeded` with the exact numbers instead of risking the account.
-Pacing (`FMAIILY_DEFAULT_SEND_INTERVAL_SECONDS`, default 2 s) spreads sends per account and is
+Pacing (`GMAIL_AUTOMATOR_DEFAULT_SEND_INTERVAL_SECONDS`, default 2 s) spreads sends per account and is
 persisted, so it survives a restart.
 
 A daily-quota rejection from Google is treated as terminal for that job rather than retried:
@@ -145,7 +145,7 @@ when capacity frees up.
 
 ## Service accounts (Workspace only)
 
-A Workspace administrator can authorize a service account to impersonate a user, which lets Fmaiily
+A Workspace administrator can authorize a service account to impersonate a user, which lets gmail-automator
 send unattended with no browser consent step. The admin-side steps:
 
 1. In the Cloud project, enable the **Gmail API**.
@@ -160,20 +160,20 @@ send unattended with no browser consent step. The admin-side steps:
    and record the numeric **Client ID**. That is the value the Workspace admin authorizes in step 4.
 4. In the Workspace Admin console: **Security -> Access and data control -> API controls ->
    Domain-wide delegation**, and add the client ID from step 3 with that scope.
-5. Point Fmaiily at the key and the user to impersonate:
+5. Point gmail-automator at the key and the user to impersonate:
 
    ```dotenv
-   FMAIILY_SERVICE_ACCOUNT_KEY_FILE=/run/secrets/fmaiily-sa.json
-   FMAIILY_SERVICE_ACCOUNT_SUBJECT=agent@acme.co
+   GMAIL_AUTOMATOR_SERVICE_ACCOUNT_KEY_FILE=/run/secrets/gmail_automator-sa.json
+   GMAIL_AUTOMATOR_SERVICE_ACCOUNT_SUBJECT=agent@acme.co
    ```
 
 6. Register the mailbox once:
 
    ```bash
-   uv run fmaiily accounts list
+   uv run gmail-automator accounts list
    ```
 
-   It will appear as `service_account` / `workspace` in `fmaiily status` after the first send, or
+   It will appear as `service_account` / `workspace` in `gmail-automator status` after the first send, or
    connect it through the normal flow if you also want an OAuth grant on the same address.
 
 Notes:
@@ -184,7 +184,7 @@ Notes:
   leak; a token is minted per send.
 - Quota and pacing apply exactly as for an OAuth account - Gmail does not treat impersonated sends
   differently.
-- `fmaiily accounts disconnect <address>` stops sending for it, because the account status is
+- `gmail-automator accounts disconnect <address>` stops sending for it, because the account status is
   checked before a token is minted.
 - Rotation of the service account key is just a file swap and a restart; no database migration is
   involved, because no token is stored.
@@ -194,11 +194,11 @@ Notes:
 ## Troubleshooting
 
 **`authorization_url` returns "OAuth is not configured"**
-`FMAIILY_GOOGLE_OAUTH_CLIENT_ID` or `..._SECRET` is missing. Confirm with
-`docker compose exec fmaiily env | grep FMAIILY_GOOGLE`.
+`GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_ID` or `..._SECRET` is missing. Confirm with
+`docker compose exec gmail_automator env | grep GMAIL_AUTOMATOR_GOOGLE`.
 
 **Google says "Error 400: redirect_uri_mismatch"**
-The URI in the Cloud console does not match `FMAIILY_OAUTH_REDIRECT_URI` character for character.
+The URI in the Cloud console does not match `GMAIL_AUTOMATOR_OAUTH_REDIRECT_URI` character for character.
 Note the scheme (`http` vs `https`), the port, and any trailing slash.
 
 **Google says "Access blocked" or the consent screen is not shown**
@@ -208,38 +208,38 @@ verification process, because the app stays in external/testing mode.
 
 **`403 insufficientPermissions` on send**
 The connected account no longer holds `gmail.send`. Reconnect it, and check the account's scopes
-with `fmaiily accounts list`.
+with `gmail-automator accounts list`.
 
 **`token refresh failed` / `account_not_found`**
-`FMAIILY_TOKEN_ENCRYPTION_KEY` changed after the account was connected, so the stored token cannot
+`GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY` changed after the account was connected, so the stored token cannot
 be decrypted. Reconnect the account. This key must be backed up like a database password.
 
 **Drafts are unavailable**
 Draft mode is a later phase and needs the `gmail.compose` scope. An account connected with only
-`gmail.send` cannot create drafts; Fmaiily reports `scope_missing` rather than failing obscurely.
+`gmail.send` cannot create drafts; gmail-automator reports `scope_missing` rather than failing obscurely.
 
 ---
 
 ## Keeping the connection alive
 
-Google access tokens live about an hour. Fmaiily refreshes them automatically, ahead of expiry, and
+Google access tokens live about an hour. gmail-automator refreshes them automatically, ahead of expiry, and
 retries once on a `401`. A successful refresh also persists a rotated refresh token, so a long-lived
 deployment does not need periodic reconnection.
 
 If a refresh fails, the previous token is kept and the account is marked `error` so a transient
-Google outage does not destroy a working session. `fmaiily status` shows which account is affected.
+Google outage does not destroy a working session. `gmail-automator status` shows which account is affected.
 
 ---
 
 ## Your responsibilities
 
-Fmaiily makes sending convenient; it does not make it lawful. You remain responsible for:
+gmail-automator makes sending convenient; it does not make it lawful. You remain responsible for:
 
 - complying with the Gmail Terms of Service and Google Workspace acceptable-use policies;
 - only sending to recipients who have consented or otherwise expect the message;
 - not using the gateway for bulk or unsolicited mail.
 
-Fmaiily will not hide Gmail's limits from you, and it will not bypass them. It deliberately paces
+gmail-automator will not hide Gmail's limits from you, and it will not bypass them. It deliberately paces
 and refuses rather than pushing an account to the edge of what Google tolerates.
 
 ## References

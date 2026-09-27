@@ -1,4 +1,4 @@
-# Fmaiily
+# gmail-automator
 
 [![CI](https://github.com/instax-dutta/gmail-automator/actions/workflows/ci.yml/badge.svg)](https://github.com/instax-dutta/gmail-automator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -23,7 +23,7 @@ official sending limits so the account is never locked.
 [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 > The GitHub repository is `gmail-automator`; the Python distribution and import package are
-> `fmaiily`, and the CLI is `fmaiily`. They are the same thing.
+> `gmail_automator`, and the CLI is `gmail_automator`. They are the same thing.
 
 ## Contents
 
@@ -55,7 +55,7 @@ and the account is throttled or locked, and the failure looks like a bug in the 
 limit. Most existing options make this worse: they ask for full mailbox read access, they hide their
 quota assumptions, or they run someone else's infrastructure over your mail.
 
-Fmaiily sits in between. It is a small service you run yourself that holds one narrow credential
+gmail-automator sits in between. It is a small service you run yourself that holds one narrow credential
 (`gmail.send`), accounts for every send before it happens, and refuses the risky one with a clear
 error your agent can reason about.
 
@@ -80,7 +80,7 @@ Nothing else. No Redis, no message broker, no external database to operate.
 
 ```bash
 cp .env.example .env
-$EDITOR .env          # set FMAIILY_TOKEN_ENCRYPTION_KEY and the Google OAuth client id/secret
+$EDITOR .env          # set GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY and the Google OAuth client id/secret
 docker compose up -d
 ```
 
@@ -91,19 +91,19 @@ published address in `docker-compose.yml`.
 
 ```bash
 uv sync --extra dev
-uv run fmaiily gen-key          # -> FMAIILY_TOKEN_ENCRYPTION_KEY
+uv run gmail-automator gen-key          # -> GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY
 cp .env.example .env            # fill in the key + Google OAuth credentials
-uv run fmaiily migrate
-uv run fmaiily serve             # or: uv run fmaiily mcp-stdio
+uv run gmail-automator migrate
+uv run gmail-automator serve             # or: uv run gmail-automator mcp-stdio
 ```
 
 ### Connect an account and send
 
 ```bash
-uv run fmaiily accounts connect          # prints the Google consent URL; open it in a browser
-uv run fmaiily status                    # accounts, remaining capacity, queue depth
-uv run fmaiily keys create agent          # prints an API key, once
-uv run fmaiily send-test someone@example.com
+uv run gmail-automator accounts connect          # prints the Google consent URL; open it in a browser
+uv run gmail-automator status                    # accounts, remaining capacity, queue depth
+uv run gmail-automator keys create agent          # prints an API key, once
+uv run gmail-automator send-test someone@example.com
 ```
 
 ---
@@ -111,14 +111,14 @@ uv run fmaiily send-test someone@example.com
 ## Give your agent a key
 
 ```bash
-uv run fmaiily keys create my-agent --scopes send,read
+uv run gmail-automator keys create my-agent --scopes send,read
 # fmg_1a2b3c4d_...            <- shown once
 ```
 
 The secret goes to stdout and the warning to stderr, so this is safe:
 
 ```bash
-KEY=$(fmaiily keys create my-agent --scopes send,read | tail -1)
+KEY=$(gmail-automator keys create my-agent --scopes send,read | tail -1)
 ```
 
 Give the key only the scopes its consumer needs - `send` to send, `read` for status and quota. A key
@@ -194,7 +194,7 @@ curl -s http://localhost:8000/v1/send/batch \
 ```
 
 The whole batch is validated and quota-checked **before** anything is queued, so a refusal leaves
-the queue untouched. Pacing then spreads the sends `FMAIILY_DEFAULT_SEND_INTERVAL_SECONDS` apart.
+the queue untouched. Pacing then spreads the sends `GMAIL_AUTOMATOR_DEFAULT_SEND_INTERVAL_SECONDS` apart.
 
 ### Errors
 
@@ -222,7 +222,7 @@ Served by the same process at `/mcp`, guarded by the same API key:
 ```json
 {
   "mcpServers": {
-    "fmaiily": {
+    "gmail_automator": {
       "url": "http://localhost:8000/mcp",
       "headers": { "Authorization": "Bearer fmg_YOUR_KEY_HERE" }
     }
@@ -245,15 +245,15 @@ For agent clients that spawn a subprocess:
 ```json
 {
   "mcpServers": {
-    "fmaiily": { "command": "fmaiily", "args": ["mcp-stdio"] }
+    "gmail_automator": { "command": "gmail_automator", "args": ["mcp-stdio"] }
   }
 }
 ```
 
-The subprocess inherits the environment, so `FMAIILY_DATABASE_URL` and
-`FMAIILY_TOKEN_ENCRYPTION_KEY` must be visible to the client - see
+The subprocess inherits the environment, so `GMAIL_AUTOMATOR_DATABASE_URL` and
+`GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY` must be visible to the client - see
 [Configuration](#configuration). If the client does not pass the environment through, wrap the
-command: `"command": "sh", "args": ["-c", "FMAIILY_DATABASE_URL=... fmaiily mcp-stdio"]`.
+command: `"command": "sh", "args": ["-c", "GMAIL_AUTOMATOR_DATABASE_URL=... gmail-automator mcp-stdio"]`.
 
 | Tool                      | What it does                                                        |
 |---------------------------|---------------------------------------------------------------------|
@@ -312,15 +312,15 @@ The rules that matter:
 ## How limits are enforced
 
 1. **Soft limits, not hard ones.** The gateway caps each account at
-   `FMAIILY_DEFAULT_DAILY_MESSAGE_LIMIT x FMAIILY_SOFT_LIMIT_RATIO` (default `500 x 0.85 = 425`).
+   `GMAIL_AUTOMATOR_DEFAULT_DAILY_MESSAGE_LIMIT x GMAIL_AUTOMATOR_SOFT_LIMIT_RATIO` (default `500 x 0.85 = 425`).
 2. **Rolling window.** Counted from `send_jobs` over the last 24 hours - completed sends plus jobs
    already queued. No counter table to drift out of sync.
 3. **Refuse before calling Google.** A send that would cross a soft limit is rejected with
    `quota_exceeded` and the numbers involved. Google is never asked.
-4. **Pacing.** Jobs are *scheduled* `FMAIILY_DEFAULT_SEND_INTERVAL_SECONDS` apart per account, not
+4. **Pacing.** Jobs are *scheduled* `GMAIL_AUTOMATOR_DEFAULT_SEND_INTERVAL_SECONDS` apart per account, not
    slept on, so a worker thread never blocks and the pacing survives restarts.
 5. **Backoff, and knowing when to stop.** `rateLimitExceeded` and 5xx retry with
-   `2^(attempt-1) + jitter`, capped, honouring `Retry-After`, up to `FMAIILY_MAX_ATTEMPTS`. A
+   `2^(attempt-1) + jitter`, capped, honouring `Retry-After`, up to `GMAIL_AUTOMATOR_MAX_ATTEMPTS`. A
    *daily* quota rejection is terminal for the job: Google documents that it can stay in force for
    hours, so retrying would only spend more of the remaining budget.
 
@@ -331,11 +331,11 @@ Every limit is configuration, not a constant. Gmail changes its published number
 
 ## When not to use this
 
-- **You need to read mail.** Fmaiily requests `gmail.send` and nothing else. It will not become a
+- **You need to read mail.** gmail-automator requests `gmail.send` and nothing else. It will not become a
   mail client, and it deliberately cannot read your inbox.
 - **You want someone else's infrastructure.** There is no hosted version. That is the trade: the
   credential never leaves your host.
-- **You are sending bulk or unsolicited mail.** Fmaiily stays well inside Gmail's limits as a
+- **You are sending bulk or unsolicited mail.** gmail-automator stays well inside Gmail's limits as a
   safety margin. It is not permission, and Gmail's Terms of Service still apply.
 - **You need multi-tenant isolation.** The auth model assumes one operator issuing keys to their own
   agents. It is not a public SaaS backend.
@@ -346,36 +346,36 @@ Every limit is configuration, not a constant. Gmail changes its published number
 
 ## Configuration
 
-Every setting is an environment variable prefixed `FMAIILY_`; see
+Every setting is an environment variable prefixed `GMAIL_AUTOMATOR_`; see
 [`.env.example`](.env.example) for the annotated list. The ones that matter most:
 
 | Variable                                | Default              | Meaning                                            |
 |-----------------------------------------|----------------------|----------------------------------------------------|
-| `FMAIILY_TOKEN_ENCRYPTION_KEY`          | *required*           | 32 bytes, base64. Losing it makes stored tokens unreadable |
-| `FMAIILY_DATABASE_URL`                  | `sqlite:///./data/…` | SQLite or `postgresql+psycopg://…`                  |
-| `FMAIILY_AUTH_MODE`                     | `api_key`            | `none` for loopback-only local use                  |
-| `FMAIILY_SOFT_LIMIT_RATIO`              | `0.85`               | Fraction of the hard limit the gateway will use     |
-| `FMAIILY_DEFAULT_SEND_INTERVAL_SECONDS` | `2.0`                | Per-account pacing interval                        |
-| `FMAIILY_HOST` / `FMAIILY_PORT`         | `127.0.0.1` / `8000` | Bind address                                       |
-| `FMAIILY_WORKER_ENABLED`                | `true`               | Run the send worker in this process                 |
-| `FMAIILY_ATTACHMENTS_ENABLED`           | `false`              | Allow attachments                                  |
-| `FMAIILY_ATTACHMENT_ALLOWED_DIRS`       | *empty*              | Directories path attachments may be read from       |
+| `GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY`          | *required*           | 32 bytes, base64. Losing it makes stored tokens unreadable |
+| `GMAIL_AUTOMATOR_DATABASE_URL`                  | `sqlite:///./data/…` | SQLite or `postgresql+psycopg://…`                  |
+| `GMAIL_AUTOMATOR_AUTH_MODE`                     | `api_key`            | `none` for loopback-only local use                  |
+| `GMAIL_AUTOMATOR_SOFT_LIMIT_RATIO`              | `0.85`               | Fraction of the hard limit the gateway will use     |
+| `GMAIL_AUTOMATOR_DEFAULT_SEND_INTERVAL_SECONDS` | `2.0`                | Per-account pacing interval                        |
+| `GMAIL_AUTOMATOR_HOST` / `GMAIL_AUTOMATOR_PORT`         | `127.0.0.1` / `8000` | Bind address                                       |
+| `GMAIL_AUTOMATOR_WORKER_ENABLED`                | `true`               | Run the send worker in this process                 |
+| `GMAIL_AUTOMATOR_ATTACHMENTS_ENABLED`           | `false`              | Allow attachments                                  |
+| `GMAIL_AUTOMATOR_ATTACHMENT_ALLOWED_DIRS`       | *empty*              | Directories path attachments may be read from       |
 
 ---
 
 ## CLI
 
 ```
-fmaiily serve                 # HTTP gateway: REST + MCP
-fmaiily mcp-stdio             # MCP over stdio
-fmaiily migrate               # apply database migrations
-fmaiily gen-key               # generate a token encryption key
-fmaiily status [--json]       # accounts, remaining capacity, queue depth
-fmaiily send-test <recipient> # send a real message end to end
-fmaiily rotate-keys [--dry-run]   # re-encrypt stored tokens under a new key
-fmaiily accounts list|connect|disconnect
-fmaiily keys create|list|revoke
-fmaiily purge-history [--days N]
+gmail-automator serve                 # HTTP gateway: REST + MCP
+gmail-automator mcp-stdio             # MCP over stdio
+gmail-automator migrate               # apply database migrations
+gmail-automator gen-key               # generate a token encryption key
+gmail-automator status [--json]       # accounts, remaining capacity, queue depth
+gmail-automator send-test <recipient> # send a real message end to end
+gmail-automator rotate-keys [--dry-run]   # re-encrypt stored tokens under a new key
+gmail-automator accounts list|connect|disconnect
+gmail-automator keys create|list|revoke
+gmail-automator purge-history [--days N]
 ```
 
 `status --json` and `keys list` write JSON to **stdout**; logs and human messages go to **stderr**,
@@ -385,18 +385,18 @@ so both are safe to pipe.
 
 ## Operator status page
 
-`GET /status` renders the same numbers as `fmaiily status` for a browser: accounts, quota used
+`GET /status` renders the same numbers as `gmail-automator status` for a browser: accounts, quota used
 against the soft limit, queue depth, and the next send time. Server-rendered, no JavaScript, and no
 external assets, so it works on a host with no internet access.
 
 ## Workspace: unattended sending
 
-With a Workspace admin's domain-wide delegation grant, Fmaiily can send as a Workspace mailbox
+With a Workspace admin's domain-wide delegation grant, gmail-automator can send as a Workspace mailbox
 unattended - no interactive consent, and no refresh token stored at all:
 
 ```dotenv
-FMAIILY_SERVICE_ACCOUNT_KEY_FILE=/run/secrets/fmaiily-sa.json
-FMAIILY_SERVICE_ACCOUNT_SUBJECT=agent@acme.co
+GMAIL_AUTOMATOR_SERVICE_ACCOUNT_KEY_FILE=/run/secrets/gmail_automator-sa.json
+GMAIL_AUTOMATOR_SERVICE_ACCOUNT_SUBJECT=agent@acme.co
 ```
 
 See [`docs/google-cloud-setup.md`](docs/google-cloud-setup.md#service-accounts-workspace-only) for
@@ -416,8 +416,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
 
 The architecture is enforced by tests rather than convention: `tests/unit/test_import_boundaries.py`
-fails the build if anything outside `fmaiily/gmail/client.py` imports `googleapiclient`, if anything
-outside `fmaiily/db.py` creates an engine, or if a service calls `datetime.now()` instead of taking
+fails the build if anything outside `gmail_automator/gmail/client.py` imports `googleapiclient`, if anything
+outside `gmail_automator/db.py` creates an engine, or if a service calls `datetime.now()` instead of taking
 an injected `Clock`. Google is never contacted in the default test run - `tests/support/fake_gmail_app.py`
 is an in-process fake, and `tests/support/sync_asgi.py` adapts it for both `httpx` and `httplib2`
 without binding a port.
@@ -438,7 +438,7 @@ without binding a port.
 ## Your responsibilities
 
 You remain responsible for the Gmail Terms of Service, recipient consent, and anti-spam rules.
-Fmaiily does not hide or bypass Gmail's limits; it stays well inside them so your account is not at
+gmail-automator does not hide or bypass Gmail's limits; it stays well inside them so your account is not at
 risk. Do not use it for bulk or unsolicited mail.
 
 ---

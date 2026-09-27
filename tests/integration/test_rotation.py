@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from fmaiily.crypto import CryptoError, TokenCipher
-from fmaiily.models import Account
-from fmaiily.rotations import RotationPlan, TokenRotator, survey
+from gmail_automator.crypto import CryptoError, TokenCipher
+from gmail_automator.models import Account
+from gmail_automator.rotations import RotationPlan, TokenRotator, survey
 
 KEY_A = bytes(range(32))
 KEY_B = bytes(reversed(range(32)))
@@ -135,7 +135,7 @@ def test_a_staged_rotation_needs_the_old_key_present(session_factory, cipher, po
 
 
 def test_base64_helper_round_trips() -> None:
-    from fmaiily.crypto import encode_key
+    from gmail_automator.crypto import encode_key
 
     encoded = encode_key(KEY_B)
     assert isinstance(encoded, str)

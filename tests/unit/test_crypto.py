@@ -1,6 +1,6 @@
 import pytest
 
-from fmaiily.crypto import CryptoError, TokenCipher
+from gmail_automator.crypto import CryptoError, TokenCipher
 
 KEY = bytes(range(32))
 KEY2 = bytes(reversed(range(32)))

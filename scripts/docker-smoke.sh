@@ -9,9 +9,9 @@
 
 set -euo pipefail
 
-PORT="${FMAIILY_SMOKE_PORT:-18080}"
-IMAGE="fmaiily:smoke"
-NAME="fmaiily-smoke-$$"
+PORT="${GMAIL_AUTOMATOR_SMOKE_PORT:-18080}"
+IMAGE="gmail-automator:smoke"
+NAME="gmail-automator-smoke-$$"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KEY="$(python3 -c 'import base64,secrets;print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())')"
 ADMIN_KEY="smoke-admin-key"
@@ -43,9 +43,9 @@ docker build -q -t "${IMAGE}" "${ROOT}"
 log "starting ${NAME} on port ${PORT}"
 docker run -d --name "${NAME}" \
   -p "127.0.0.1:${PORT}:8000" \
-  -e "FMAIILY_TOKEN_ENCRYPTION_KEY=${KEY}" \
-  -e FMAIILY_AUTH_MODE=api_key \
-  -e "FMAIILY_BOOTSTRAP_ADMIN_KEY=${ADMIN_KEY}" \
+  -e "GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY=${KEY}" \
+  -e GMAIL_AUTOMATOR_AUTH_MODE=api_key \
+  -e "GMAIL_AUTOMATOR_BOOTSTRAP_ADMIN_KEY=${ADMIN_KEY}" \
   "${IMAGE}" serve >/dev/null
 
 log "waiting for /health"

@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from fmaiily.container import Container, build_container
-from fmaiily.rest.app import create_app
+from gmail_automator.container import Container, build_container
+from gmail_automator.rest.app import create_app
 from tests.support.fake_gmail_app import fake_gmail_app
 from tests.support.sync_asgi import sync_asgi_client
 
@@ -78,7 +78,7 @@ def connected(http_container: Container) -> str:
 @pytest.fixture
 def key_client(http_container: Container) -> Iterator[tuple[TestClient, Any]]:
     """An app in `auth_mode=api_key`, plus a factory for issuing keys against it."""
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     container = http_container
     container.settings = container.settings.model_copy(

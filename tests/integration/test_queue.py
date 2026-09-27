@@ -4,14 +4,14 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from fmaiily.accounts import AccountService
-from fmaiily.accounts import AccountService as _AccountService
-from fmaiily.config import Settings
-from fmaiily.crypto import TokenCipher
-from fmaiily.errors import DuplicateRequest, QueueFull
-from fmaiily.gmail.client import SendResult
-from fmaiily.models import Account, SendEvent, SendJob
-from fmaiily.queue import QueueService
+from gmail_automator.accounts import AccountService
+from gmail_automator.accounts import AccountService as _AccountService
+from gmail_automator.config import Settings
+from gmail_automator.crypto import TokenCipher
+from gmail_automator.errors import DuplicateRequest, QueueFull
+from gmail_automator.gmail.client import SendResult
+from gmail_automator.models import Account, SendEvent, SendJob
+from gmail_automator.queue import QueueService
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 PAYLOAD = b"From: me@example.com\r\nSubject: hi\r\n\r\nbody"

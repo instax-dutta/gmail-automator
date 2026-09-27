@@ -2,10 +2,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from fmaiily.accounts import AccountService
-from fmaiily.api_keys import ApiKeyContext, bearer_token_from_header
-from fmaiily.crypto import TokenCipher
-from fmaiily.errors import (
+from gmail_automator.accounts import AccountService
+from gmail_automator.api_keys import ApiKeyContext, bearer_token_from_header
+from gmail_automator.crypto import TokenCipher
+from gmail_automator.errors import (
     AccountNotFound,
     AttachmentTooLarge,
     DuplicateRequest,
@@ -14,13 +14,13 @@ from fmaiily.errors import (
     QuotaExceeded,
     Unauthorized,
 )
-from fmaiily.gmail.client import SendResult
-from fmaiily.gmail.mime import Attachment, OutgoingMessage
-from fmaiily.history import HistoryService
-from fmaiily.models import Account, ApiKeyRow, SendJob
-from fmaiily.queue import QueueService
-from fmaiily.quota import QuotaService
-from fmaiily.send import SendService
+from gmail_automator.gmail.client import SendResult
+from gmail_automator.gmail.mime import Attachment, OutgoingMessage
+from gmail_automator.history import HistoryService
+from gmail_automator.models import Account, ApiKeyRow, SendJob
+from gmail_automator.queue import QueueService
+from gmail_automator.quota import QuotaService
+from gmail_automator.send import SendService
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 SENDER = "me@example.com"
@@ -236,7 +236,7 @@ def test_send_rejects_attachments_when_disabled(sender: SendService, account: Ac
     msg = _msg(attachments=(Attachment("a.txt", b"x"),))
     with pytest.raises(InvalidRequest) as excinfo:
         sender.send(account_email=None, msg=msg, source="api", wait=False, now=NOW)
-    assert "FMAIILY_ATTACHMENTS_ENABLED" in excinfo.value.message
+    assert "GMAIL_AUTOMATOR_ATTACHMENTS_ENABLED" in excinfo.value.message
 
 
 def test_send_rejects_an_oversized_attachment(

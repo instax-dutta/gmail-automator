@@ -3,10 +3,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import SecretStr
 
-from fmaiily.container import build_container
-from fmaiily.metrics import Metrics
-from fmaiily.models import SendEvent, SendJob
-from fmaiily.worker import Worker
+from gmail_automator.container import build_container
+from gmail_automator.metrics import Metrics
+from gmail_automator.models import SendEvent, SendJob
+from gmail_automator.worker import Worker
 from tests.support.fake_gmail_app import fake_gmail_app
 from tests.support.sync_asgi import sync_asgi_client
 
@@ -67,13 +67,14 @@ def test_a_successful_send_is_counted(wired, connected, metrics) -> None:
     assert worker.run_once(now=NOW).action == "sent"
     text = metrics.render()
     assert (
-        'fmaiily_sends_total{account="sender@example.com",outcome="sent",source="api"} 1.0' in text
+        'gmail_automator_sends_total{account="sender@example.com",outcome="sent",source="api"} 1.0'
+        in text
     )
-    assert 'fmaiily_worker_iterations_total{action="sent"} 1.0' in text
+    assert 'gmail_automator_worker_iterations_total{action="sent"} 1.0' in text
 
 
 def test_a_failed_send_is_counted_with_its_code(wired, connected, metrics, fake_transport) -> None:
-    from fmaiily.gmail.client import GoogleApiError
+    from gmail_automator.gmail.client import GoogleApiError
 
     fake_transport.script_error(
         GoogleApiError(status_code=403, reason="dailySendQuotaExceeded", message="limit")
@@ -90,7 +91,7 @@ def test_send_latency_is_observed(wired, connected, metrics) -> None:
     worker = Worker(wired, worker_id="w", rand=lambda: 0.0)
     _enqueue(wired)
     worker.run_once(now=NOW)
-    assert "fmaiily_send_duration_seconds_count" in metrics.render()
+    assert "gmail_automator_send_duration_seconds_count" in metrics.render()
 
 
 def test_token_refreshes_are_counted(wired, connected, metrics) -> None:
@@ -98,15 +99,16 @@ def test_token_refreshes_are_counted(wired, connected, metrics) -> None:
     worker = Worker(wired, worker_id="w", rand=lambda: 0.0)
     _enqueue(wired)
     worker.run_once(now=NOW)
-    assert 'fmaiily_tokens_refreshed_total{account="sender@example.com",result="ok"} 1.0' in (
-        metrics.render()
+    assert (
+        'gmail_automator_tokens_refreshed_total{account="sender@example.com",result="ok"} 1.0'
+        in (metrics.render())
     )
 
 
 def test_idle_iterations_are_counted(wired, metrics) -> None:
     worker = Worker(wired, worker_id="w", rand=lambda: 0.0)
     assert worker.run_once(now=NOW).action == "idle"
-    assert 'fmaiily_worker_iterations_total{action="idle"} 1.0' in metrics.render()
+    assert 'gmail_automator_worker_iterations_total{action="idle"} 1.0' in metrics.render()
 
 
 def test_queue_depth_and_quota_gauges_are_published(wired, connected, metrics) -> None:
@@ -114,8 +116,10 @@ def test_queue_depth_and_quota_gauges_are_published(wired, connected, metrics) -
     _enqueue(wired)
     worker.run_once(now=NOW)
     text = metrics.render()
-    assert "fmaiily_queue_depth 0.0" in text
-    assert 'fmaiily_quota_remaining{account="sender@example.com",resource="messages"}' in text
+    assert "gmail_automator_queue_depth 0.0" in text
+    assert (
+        'gmail_automator_quota_remaining{account="sender@example.com",resource="messages"}' in text
+    )
 
 
 # ----------------------------------------------------------------- retention
@@ -154,7 +158,7 @@ def test_maintenance_sweeps_expired_payloads(wired, connected) -> None:
 
 
 def _payload_for(*, container) -> str:
-    from fmaiily.gmail.mime import OutgoingMessage, build_mime, to_raw_b64
+    from gmail_automator.gmail.mime import OutgoingMessage, build_mime, to_raw_b64
 
     raw = build_mime(
         OutgoingMessage(

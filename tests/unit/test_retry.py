@@ -2,9 +2,9 @@ import random
 
 import pytest
 
-from fmaiily.errors import SendFailed
-from fmaiily.gmail.client import AuthExpired, GoogleApiError
-from fmaiily.retry import RetryDecision, classify, compute_delay, decide
+from gmail_automator.errors import SendFailed
+from gmail_automator.gmail.client import AuthExpired, GoogleApiError
+from gmail_automator.retry import RetryDecision, classify, compute_delay, decide
 
 BASE = 1.0
 CAP = 64.0

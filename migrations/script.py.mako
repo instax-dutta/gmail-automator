@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-import fmaiily.db
+import gmail_automator.db
 from alembic import op
 ${imports if imports else ""}
 revision: str = ${repr(up_revision)}

@@ -3,10 +3,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from fmaiily.accounts import AccountService
-from fmaiily.errors import QuotaExceeded
-from fmaiily.models import Account, SendJob
-from fmaiily.quota import QuotaService, QuotaSnapshot
+from gmail_automator.accounts import AccountService
+from gmail_automator.errors import QuotaExceeded
+from gmail_automator.models import Account, SendJob
+from gmail_automator.quota import QuotaService, QuotaSnapshot
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 WINDOW = timedelta(hours=24)

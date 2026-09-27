@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from fmaiily.cli import app
-from fmaiily.container import build_container
-from fmaiily.gmail.mime import OutgoingMessage
+from gmail_automator.cli import app
+from gmail_automator.container import build_container
+from gmail_automator.gmail.mime import OutgoingMessage
 from tests.support.fake_gmail_app import fake_gmail_app
 from tests.support.fakes import FakeGmailTransport
 from tests.support.sync_asgi import sync_asgi_client
@@ -25,15 +25,17 @@ def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_clock, fake_tr
     import base64
 
     database = tmp_path / "cli.db"
-    monkeypatch.setenv("FMAIILY_TOKEN_ENCRYPTION_KEY", base64.urlsafe_b64encode(b"c" * 32).decode())
-    monkeypatch.setenv("FMAIILY_DATABASE_URL", f"sqlite:///{database}")
-    monkeypatch.setenv("FMAIILY_AUTH_MODE", "none")
-    monkeypatch.setenv("FMAIILY_WORKER_ENABLED", "false")
-    monkeypatch.setenv("FMAIILY_GOOGLE_OAUTH_CLIENT_ID", "cid")
-    monkeypatch.setenv("FMAIILY_GOOGLE_OAUTH_CLIENT_SECRET", "csecret")
-    monkeypatch.setenv("FMAIILY_OAUTH_AUTHORIZATION_URI", "http://oauth.test/authorize")
-    monkeypatch.setenv("FMAIILY_OAUTH_TOKEN_URI", "http://oauth.test/token")
-    monkeypatch.setenv("FMAIILY_OIDC_USERINFO_URL", "http://oauth.test/v1/userinfo")
+    monkeypatch.setenv(
+        "GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY", base64.urlsafe_b64encode(b"c" * 32).decode()
+    )
+    monkeypatch.setenv("GMAIL_AUTOMATOR_DATABASE_URL", f"sqlite:///{database}")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_AUTH_MODE", "none")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_WORKER_ENABLED", "false")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_ID", "cid")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_SECRET", "csecret")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_OAUTH_AUTHORIZATION_URI", "http://oauth.test/authorize")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_OAUTH_TOKEN_URI", "http://oauth.test/token")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_OIDC_USERINFO_URL", "http://oauth.test/v1/userinfo")
     return database
 
 
@@ -104,7 +106,7 @@ def test_status_json_shape(cli_env: Path) -> None:
 def test_missing_encryption_key_is_a_clean_error(
     cli_env: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("FMAIILY_TOKEN_ENCRYPTION_KEY")
+    monkeypatch.delenv("GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY")
     result = _invoke("status")
     assert result.exit_code == 2
     assert "configuration error" in result.output
@@ -157,8 +159,8 @@ def test_keys_revoke_unknown_prefix_fails_cleanly(cli_env: Path) -> None:
 def test_accounts_list_and_disconnect(cli_env: Path) -> None:
     """Connect through the fake Google app, then inspect and disconnect via the CLI."""
     assert _invoke("migrate").exit_code == 0
-    from fmaiily.config import Settings
-    from fmaiily.db import Base, create_db_engine
+    from gmail_automator.config import Settings
+    from gmail_automator.db import Base, create_db_engine
 
     settings = Settings()  # type: ignore[call-arg]
     engine = create_db_engine(settings.database_url)
@@ -196,8 +198,8 @@ def test_accounts_connect_prints_the_consent_url(cli_env: Path) -> None:
 
 def test_status_shows_quota_after_a_send(cli_env: Path, fake_transport) -> None:
     assert _invoke("migrate").exit_code == 0
-    from fmaiily.config import Settings
-    from fmaiily.db import Base, create_db_engine
+    from gmail_automator.config import Settings
+    from gmail_automator.db import Base, create_db_engine
 
     settings = Settings()  # type: ignore[call-arg]
     engine = create_db_engine(settings.database_url)
@@ -245,7 +247,7 @@ def test_one_time_secrets_go_to_stdout_and_warnings_to_stderr(cli_env: Path) -> 
     """A user pipes the key into a variable; the warning must not land in it.
 
     The README promises that human messages go to stderr, so that
-    `fmaiily keys create agent | tail -1` yields the key. `gen-key` already behaves this way;
+    `gmail-automator keys create agent | tail -1` yields the key. `gen-key` already behaves this way;
     `keys create` did not, and would have handed back the warning text instead of the credential.
     """
     assert _invoke("migrate").exit_code == 0

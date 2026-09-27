@@ -52,7 +52,7 @@ jobs:
         image: postgres:17-alpine
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: fmaiily
+          POSTGRES_DB: gmail_automator
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -65,7 +65,7 @@ jobs:
       - run: uv sync --extra dev --extra postgres
       - run: uv run pytest -m postgres
         env:
-          FMAIILY_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/fmaiily
+          GMAIL_AUTOMATOR_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gmail_automator
 
   docker:
     runs-on: ubuntu-latest

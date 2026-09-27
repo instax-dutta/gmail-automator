@@ -2,9 +2,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from fmaiily.accounts import AccountService
-from fmaiily.errors import AccountNotFound, InvalidRequest
-from fmaiily.models import Account
+from gmail_automator.accounts import AccountService
+from gmail_automator.errors import AccountNotFound, InvalidRequest
+from gmail_automator.models import Account
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 

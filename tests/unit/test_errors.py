@@ -1,4 +1,4 @@
-from fmaiily.errors import (
+from gmail_automator.errors import (
     AccountNotFound,
     GatewayError,
     QuotaExceeded,

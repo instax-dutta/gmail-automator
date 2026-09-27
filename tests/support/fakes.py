@@ -43,7 +43,7 @@ class FakeGmailTransport:
     _draft_errors: list[Exception] = field(default_factory=list)
 
     def script_result(self, message_id: str, thread_id: str | None = None) -> None:
-        from fmaiily.gmail.client import SendResult
+        from gmail_automator.gmail.client import SendResult
 
         self._results.append(
             SendResult(message_id=message_id, thread_id=thread_id, label_ids=("SENT",))
@@ -55,7 +55,7 @@ class FakeGmailTransport:
     def script_draft_result(
         self, draft_id: str, message_id: str | None = None, thread_id: str | None = None
     ) -> None:
-        from fmaiily.gmail.client import DraftResult
+        from gmail_automator.gmail.client import DraftResult
 
         self._draft_results.append(
             DraftResult(draft_id=draft_id, message_id=message_id, thread_id=thread_id)
@@ -67,7 +67,7 @@ class FakeGmailTransport:
     def create_draft(
         self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
     ) -> Any:
-        from fmaiily.gmail.client import DraftResult
+        from gmail_automator.gmail.client import DraftResult
 
         self.draft_calls.append(
             {
@@ -86,7 +86,7 @@ class FakeGmailTransport:
     def send_raw(
         self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
     ) -> Any:
-        from fmaiily.gmail.client import SendResult
+        from gmail_automator.gmail.client import SendResult
 
         self.calls.append(
             {

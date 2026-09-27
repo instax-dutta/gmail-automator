@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from fmaiily.attachments import resolve_attachments
-from fmaiily.config import Settings
-from fmaiily.errors import AttachmentPathNotAllowed, AttachmentTooLarge, InvalidRequest
+from gmail_automator.attachments import resolve_attachments
+from gmail_automator.config import Settings
+from gmail_automator.errors import AttachmentPathNotAllowed, AttachmentTooLarge, InvalidRequest
 
 KEY = base64.urlsafe_b64encode(b"a" * 32).decode()
 
@@ -47,7 +47,7 @@ def test_attachments_are_refused_when_disabled() -> None:
         resolve_attachments(
             [_spec("a.txt", content="aGk=")], settings=_settings(attachments_enabled=False)
         )
-    assert "FMAIILY_ATTACHMENTS_ENABLED" in excinfo.value.message
+    assert "GMAIL_AUTOMATOR_ATTACHMENTS_ENABLED" in excinfo.value.message
 
 
 # -------------------------------------------------------------------- inline
@@ -117,7 +117,7 @@ def test_path_outside_the_allow_list_is_refused(tmp_path: Path, allowed_dir: Pat
                 attachments_enabled=True, attachment_allowed_dirs=[str(allowed_dir)]
             ),
         )
-    assert "FMAIILY_ATTACHMENT_ALLOWED_DIRS" in excinfo.value.message
+    assert "GMAIL_AUTOMATOR_ATTACHMENT_ALLOWED_DIRS" in excinfo.value.message
     assert str(allowed_dir) in excinfo.value.details["allowed_dirs"]
 
 
@@ -127,7 +127,7 @@ def test_path_attachment_without_an_allow_list_is_refused(allowed_dir: Path) -> 
             [_spec("note.txt", path=str(allowed_dir / "note.txt"))],
             settings=_settings(attachments_enabled=True, attachment_allowed_dirs=[]),
         )
-    assert "FMAIILY_ATTACHMENT_ALLOWED_DIRS" in excinfo.value.message
+    assert "GMAIL_AUTOMATOR_ATTACHMENT_ALLOWED_DIRS" in excinfo.value.message
 
 
 def test_a_symlink_escaping_the_allow_list_is_refused(tmp_path: Path, allowed_dir: Path) -> None:

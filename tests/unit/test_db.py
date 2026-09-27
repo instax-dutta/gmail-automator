@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select, text
 
-from fmaiily.db import UTCDateTime, create_db_engine, create_session_factory
-from fmaiily.models import Account, Base
+from gmail_automator.db import UTCDateTime, create_db_engine, create_session_factory
+from gmail_automator.models import Account, Base
 
 
 def test_sqlite_pragmas(tmp_path) -> None:

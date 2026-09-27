@@ -30,7 +30,7 @@ def test_health_counts_connected_accounts(client: TestClient, connected: str) ->
 
 def test_root_points_at_the_surfaces(client: TestClient) -> None:
     body = client.get("/").json()
-    assert body["service"] == "fmaiily"
+    assert body["service"] == "gmail_automator"
     assert body["rest"] == "/v1"
     assert body["mcp"] == "/mcp"
 
@@ -121,7 +121,7 @@ def test_send_without_any_account_explains_what_to_do(client: TestClient) -> Non
 
 
 def test_quota_refusal_uses_429(client: TestClient, connected: str, http_container) -> None:
-    from fmaiily.models import SendJob
+    from gmail_automator.models import SendJob
 
     account = http_container.accounts.resolve(None)
     now = http_container.clock.now()

@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from fmaiily.rest.app import create_app
-from fmaiily.worker import Worker
+from gmail_automator.rest.app import create_app
+from gmail_automator.worker import Worker
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def attach_client(http_container, allowed: Path):
         }
     )
     # services hold the settings they were built with, so rebuild the sender with the new policy
-    from fmaiily.send import SendService
+    from gmail_automator.send import SendService
 
     container.sender = SendService(
         settings=container.settings,
@@ -74,7 +74,7 @@ def test_an_outside_path_is_refused(attach_client: TestClient, tmp_path: Path, c
     assert response.status_code == 400
     error = response.json()["error"]
     assert error["code"] == "attachment_path_not_allowed"
-    assert "FMAIILY_ATTACHMENT_ALLOWED_DIRS" in error["message"]
+    assert "GMAIL_AUTOMATOR_ATTACHMENT_ALLOWED_DIRS" in error["message"]
 
 
 def test_inline_content_still_works(attach_client: TestClient, connected: str) -> None:
@@ -91,8 +91,8 @@ def test_inline_content_still_works(attach_client: TestClient, connected: str) -
 
 def test_the_attachment_reaches_gmail_intact(http_container, allowed: Path, fake_transport) -> None:
     """Send -> queue -> worker -> transport, asserting the decoded MIME carries the file."""
-    from fmaiily.gmail.mime import OutgoingMessage
-    from fmaiily.schemas import SendEmailRequest, to_outgoing_message
+    from gmail_automator.gmail.mime import OutgoingMessage
+    from gmail_automator.schemas import SendEmailRequest, to_outgoing_message
 
     http_container.settings = http_container.settings.model_copy(
         update={
@@ -100,7 +100,7 @@ def test_the_attachment_reaches_gmail_intact(http_container, allowed: Path, fake
             "attachment_allowed_dirs": [str(allowed)],
         }
     )
-    from fmaiily.send import SendService
+    from gmail_automator.send import SendService
 
     http_container.sender = SendService(
         settings=http_container.settings,

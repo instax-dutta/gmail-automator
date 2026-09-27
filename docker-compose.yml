@@ -1,6 +1,6 @@
-# Fmaiily: one-command local deployment.
+# gmail-automator: one-command local deployment.
 #
-#   cp .env.example .env      # then edit: at minimum FMAIILY_TOKEN_ENCRYPTION_KEY
+#   cp .env.example .env      # then edit: at minimum GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY
 #   docker compose up -d
 #
 # The gateway binds 127.0.0.1:8000 on the host. To reach it from another machine, change the
@@ -8,24 +8,24 @@
 # bearer token is the only thing protecting the send surface.
 
 services:
-  fmaiily:
+  gmail-automator:
     build:
       context: .
       dockerfile: Dockerfile
-    image: fmaiily:local
-    container_name: fmaiily
+    image: gmail-automator:local
+    container_name: gmail-automator
     restart: unless-stopped
     env_file:
       - .env
     environment:
       # `0.0.0.0` inside the container; the published port stays on loopback.
-      FMAIILY_HOST: 0.0.0.0
-      FMAIILY_PORT: "8000"
-      FMAIILY_DATABASE_URL: sqlite:////data/fmaiily.db
+      GMAIL_AUTOMATOR_HOST: 0.0.0.0
+      GMAIL_AUTOMATOR_PORT: "8000"
+      GMAIL_AUTOMATOR_DATABASE_URL: sqlite:////data/gmail-automator.db
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - fmaiily-data:/data
+      - gmail-automator-data:/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 30s
@@ -47,4 +47,4 @@ services:
         max-file: "3"
 
 volumes:
-  fmaiily-data:
+  gmail-automator-data:

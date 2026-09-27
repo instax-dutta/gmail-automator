@@ -2,8 +2,8 @@ from datetime import timedelta
 
 import pytest
 
-from fmaiily.errors import QuotaExceeded
-from fmaiily.rate_limit import KeyRateLimiter
+from gmail_automator.errors import QuotaExceeded
+from gmail_automator.rate_limit import KeyRateLimiter
 from tests.support.fakes import FakeClock
 
 # ------------------------------------------------------------- limiter alone
@@ -149,15 +149,17 @@ def test_metrics_endpoint_is_served(client) -> None:
     response = client.get("/metrics")
     assert response.status_code == 200
     assert "text/plain" in response.headers["content-type"]
-    assert "fmaiily_sends_total" in response.text
+    assert "gmail_automator_sends_total" in response.text
 
 
 def test_metrics_count_requests_by_route_template(client, connected) -> None:
     client.get("/v1/quota")
     client.get("/v1/accounts")
     text = client.get("/metrics").text
-    assert 'fmaiily_http_requests_total{method="GET",path="/v1/quota",status="200"}' in text
-    assert 'fmaiily_http_requests_total{method="GET",path="/v1/accounts",status="200"}' in text
+    assert 'gmail_automator_http_requests_total{method="GET",path="/v1/quota",status="200"}' in text
+    assert (
+        'gmail_automator_http_requests_total{method="GET",path="/v1/accounts",status="200"}' in text
+    )
 
 
 def test_metrics_never_label_a_concrete_account_or_job_id(client, connected) -> None:
@@ -175,5 +177,6 @@ def test_metrics_record_a_refused_request(client) -> None:
     client.get("/v1/quota/nobody@example.com")
     text = client.get("/metrics").text
     assert (
-        'fmaiily_http_requests_total{method="GET",path="/v1/quota/{account}",status="404"}' in text
+        'gmail_automator_http_requests_total{method="GET",path="/v1/quota/{account}",status="404"}'
+        in text
     )

@@ -1,6 +1,6 @@
 """Postgres support (opt-in, `uv sync --extra postgres`).
 
-The default suite runs entirely on SQLite. These tests only run when `FMAIILY_TEST_POSTGRES_URL`
+The default suite runs entirely on SQLite. These tests only run when `GMAIL_AUTOMATOR_TEST_POSTGRES_URL`
 points at a reachable database, so a checkout without Postgres still gets a green suite.
 
 What actually differs between the two backends, and is therefore worth testing here:
@@ -21,18 +21,18 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import Engine, text
 
-from fmaiily.config import Settings
-from fmaiily.crypto import TokenCipher
-from fmaiily.db import create_db_engine, create_session_factory, run_migrations
-from fmaiily.gmail.client import SendResult
-from fmaiily.gmail.mime import OutgoingMessage, build_mime, to_raw_b64
-from fmaiily.models import Account, SendJob
-from fmaiily.queue import QueueService
+from gmail_automator.config import Settings
+from gmail_automator.crypto import TokenCipher
+from gmail_automator.db import create_db_engine, create_session_factory, run_migrations
+from gmail_automator.gmail.client import SendResult
+from gmail_automator.gmail.mime import OutgoingMessage, build_mime, to_raw_b64
+from gmail_automator.models import Account, SendJob
+from gmail_automator.queue import QueueService
 
-POSTGRES_URL = os.environ.get("FMAIILY_TEST_POSTGRES_URL")
+POSTGRES_URL = os.environ.get("GMAIL_AUTOMATOR_TEST_POSTGRES_URL")
 pytestmark = [
     pytest.mark.postgres,
-    pytest.mark.skipif(not POSTGRES_URL, reason="set FMAIILY_TEST_POSTGRES_URL to run"),
+    pytest.mark.skipif(not POSTGRES_URL, reason="set GMAIL_AUTOMATOR_TEST_POSTGRES_URL to run"),
 ]
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
@@ -57,7 +57,7 @@ def _reset(engine: Engine) -> None:
     and the next `upgrade head` becomes a silent no-op - which looks exactly like a broken
     migration. The stamp has to go with the schema.
     """
-    from fmaiily.db import Base
+    from gmail_automator.db import Base
 
     Base.metadata.drop_all(engine)
     with engine.begin() as conn:

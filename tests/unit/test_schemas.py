@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from fmaiily.gmail.mime import Attachment, OutgoingMessage
-from fmaiily.schemas import AttachmentIn, SendEmailRequest, to_outgoing_message
+from gmail_automator.gmail.mime import Attachment, OutgoingMessage
+from gmail_automator.schemas import AttachmentIn, SendEmailRequest, to_outgoing_message
 
 
 def test_minimal_send_request() -> None:

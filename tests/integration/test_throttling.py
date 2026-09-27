@@ -12,8 +12,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from fmaiily.gmail.client import GoogleApiError
-from fmaiily.worker import Worker
+from gmail_automator.gmail.client import GoogleApiError
+from gmail_automator.worker import Worker
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 

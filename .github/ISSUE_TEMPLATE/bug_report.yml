@@ -10,7 +10,7 @@ body:
         Thanks for filing this. The most useful details are the exact command or request, the
         configuration, and the log output.
 
-        **Redact before pasting:** `FMAIILY_TOKEN_ENCRYPTION_KEY`, `FMAIILY_BOOTSTRAP_ADMIN_KEY`,
+        **Redact before pasting:** `GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY`, `GMAIL_AUTOMATOR_BOOTSTRAP_ADMIN_KEY`,
         any `fmg_...` API key, and any OAuth refresh token. A leaked encryption key unlocks every
         stored credential - rotate it if you paste one by accident.
 
@@ -20,7 +20,7 @@ body:
       label: What happened
       description: What you did, what you expected, and what you got instead.
       placeholder: |
-        I ran `fmaiily send-test someone@example.com` and expected a message id.
+        I ran `gmail-automator send-test someone@example.com` and expected a message id.
         Instead the job failed with `daily_send_quota_exceeded` on a fresh account.
     validations:
       required: true
@@ -40,7 +40,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Fmaiily version
+      label: gmail-automator version
       placeholder: "0.1.0, or a commit SHA"
     validations:
       required: true
@@ -88,12 +88,12 @@ body:
     attributes:
       label: Logs
       description: |
-        Output of the failing command, with `FMAIILY_LOG_LEVEL=DEBUG` if it helps. Redact secrets.
+        Output of the failing command, with `GMAIL_AUTOMATOR_LOG_LEVEL=DEBUG` if it helps. Redact secrets.
       render: shell
 
   - type: textarea
     id: config
     attributes:
       label: Relevant configuration
-      description: The `FMAIILY_*` variables in play. Values may be redacted, but keep the shape.
+      description: The `GMAIL_AUTOMATOR_*` variables in play. Values may be redacted, but keep the shape.
       render: dotenv

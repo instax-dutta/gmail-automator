@@ -20,10 +20,10 @@ import pytest
 import uvicorn
 from pydantic import SecretStr
 
-from fmaiily.container import build_container
-from fmaiily.db import run_migrations
-from fmaiily.rest.app import create_app
-from fmaiily.sync_asgi_server import serve_asgi_in_thread
+from gmail_automator.container import build_container
+from gmail_automator.db import run_migrations
+from gmail_automator.rest.app import create_app
+from gmail_automator.sync_asgi_server import serve_asgi_in_thread
 from tests.support.fake_gmail_app import DEFAULT_ACCOUNT, fake_gmail_app
 
 pytestmark = pytest.mark.e2e
@@ -60,7 +60,7 @@ class _Stack:
 
     def start_gateway(self, settings: Any) -> None:
         """Start a gateway against an existing database, building a fresh engine and container."""
-        from fmaiily.rest.app import create_app
+        from gmail_automator.rest.app import create_app
 
         self.container = build_container(settings)
         app = create_app(settings=settings)
@@ -86,7 +86,7 @@ class _Stack:
         self._servers.append(google_server)
         _wait_for_port(self.google_port)
 
-        from fmaiily.config import Settings
+        from gmail_automator.config import Settings
 
         settings = Settings(
             token_encryption_key=base64.urlsafe_b64encode(b"e" * 32).decode(),
@@ -239,7 +239,7 @@ def test_quota_refusal_never_reaches_gmail(stack: _Stack) -> None:
     account = _connect(stack)
     stack.container.accounts  # noqa: B018 - the container is live, mutate through it below
     with stack.container.session_factory() as session:
-        from fmaiily.models import Account, SendJob
+        from gmail_automator.models import Account, SendJob
 
         row = session.query(Account).filter_by(email=account).one()
         now = stack.container.clock.now()

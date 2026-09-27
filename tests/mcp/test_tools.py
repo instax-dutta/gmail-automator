@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import SecretStr
 
-from fmaiily.container import Container, build_container
-from fmaiily.mcp_server.server import create_mcp_server
+from gmail_automator.container import Container, build_container
+from gmail_automator.mcp_server.server import create_mcp_server
 from mcp import Client
 from tests.support.fake_gmail_app import DEFAULT_ACCOUNT, fake_gmail_app
 from tests.support.sync_asgi import sync_asgi_client
@@ -165,7 +165,7 @@ async def test_send_email_rejects_a_bad_address(server, connected: str) -> None:
 async def test_quota_exhaustion_surfaces_as_a_tool_error(
     server, mcp_container, connected: str
 ) -> None:
-    from fmaiily.models import SendJob
+    from gmail_automator.models import SendJob
 
     account = mcp_container.accounts.resolve(None)
     now = mcp_container.clock.now()
@@ -388,7 +388,7 @@ async def test_send_email_delivers_end_to_end_through_the_worker(
     server, mcp_container, connected
 ) -> None:
     """A blocking tool call returns the Gmail message id once the worker has run."""
-    from fmaiily.worker import Worker
+    from gmail_automator.worker import Worker
 
     async with Client(server, raise_exceptions=True) as client:
         result = await client.call_tool(

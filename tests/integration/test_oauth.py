@@ -5,10 +5,10 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from fmaiily.accounts import AccountService
-from fmaiily.crypto import CryptoError, TokenCipher
-from fmaiily.errors import InvalidRequest, SendFailed
-from fmaiily.oauth import OAuthService
+from gmail_automator.accounts import AccountService
+from gmail_automator.crypto import CryptoError, TokenCipher
+from gmail_automator.errors import InvalidRequest, SendFailed
+from gmail_automator.oauth import OAuthService
 from tests.support.fake_gmail_app import fake_gmail_app
 from tests.support.sync_asgi import sync_asgi_client
 
@@ -102,7 +102,7 @@ def test_start_requires_configured_oauth(
     )
     with pytest.raises(InvalidRequest) as excinfo:
         service.start()
-    assert "FMAIILY_GOOGLE_OAUTH_CLIENT_ID" in excinfo.value.message
+    assert "GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_ID" in excinfo.value.message
 
 
 def test_callback_connects_account_and_encrypts_tokens(

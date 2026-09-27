@@ -1,13 +1,13 @@
 import pytest
 
-from fmaiily.api_keys import (
+from gmail_automator.api_keys import (
     ALL_SCOPES,
     ApiKeyContext,
     generate_key,
     hash_key,
     split_key,
 )
-from fmaiily.errors import Forbidden, InvalidRequest, Unauthorized
+from gmail_automator.errors import Forbidden, InvalidRequest, Unauthorized
 
 
 def test_generated_key_matches_the_documented_shape() -> None:
@@ -76,7 +76,7 @@ def test_account_allowlist_is_case_insensitive_and_optional() -> None:
 
 
 def test_bearer_header_parsing() -> None:
-    from fmaiily.api_keys import bearer_token_from_header
+    from gmail_automator.api_keys import bearer_token_from_header
 
     assert bearer_token_from_header("Bearer fmg_a_b") == "fmg_a_b"
     assert bearer_token_from_header("bearer   fmg_a_b  ") == "fmg_a_b"
@@ -89,7 +89,7 @@ def test_bearer_header_parsing() -> None:
 
 
 def test_issue_and_verify_a_key(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     service = ApiKeyService(container=container)
     context, full_key = service.create(name="agent", scopes=("send", "read"))
@@ -100,8 +100,8 @@ def test_issue_and_verify_a_key(container) -> None:
 
 
 def test_the_secret_is_never_stored(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
-    from fmaiily.models import ApiKeyRow
+    from gmail_automator.api_keys import ApiKeyService
+    from gmail_automator.models import ApiKeyRow
 
     _, full_key = ApiKeyService(container=container).create(name="agent")
     secret = full_key.split("_", 2)[2]
@@ -114,8 +114,8 @@ def test_the_secret_is_never_stored(container) -> None:
 
 
 def test_verification_updates_last_used(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
-    from fmaiily.models import ApiKeyRow
+    from gmail_automator.api_keys import ApiKeyService
+    from gmail_automator.models import ApiKeyRow
 
     service = ApiKeyService(container=container)
     _, full_key = service.create(name="agent")
@@ -126,7 +126,7 @@ def test_verification_updates_last_used(container) -> None:
 
 
 def test_a_wrong_secret_is_rejected(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     service = ApiKeyService(container=container)
     _, full_key = service.create(name="agent")
@@ -136,21 +136,21 @@ def test_a_wrong_secret_is_rejected(container) -> None:
 
 
 def test_an_unknown_prefix_is_rejected(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     with pytest.raises(Unauthorized):
         ApiKeyService(container=container).verify("fmg_REDACTED_IN_HISTORY")
 
 
 def test_a_malformed_key_is_rejected(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     with pytest.raises(Unauthorized):
         ApiKeyService(container=container).verify("garbage")
 
 
 def test_a_revoked_key_stops_working(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     service = ApiKeyService(container=container)
     _, full_key = service.create(name="agent")
@@ -162,14 +162,14 @@ def test_a_revoked_key_stops_working(container) -> None:
 
 
 def test_revoking_an_unknown_prefix_is_an_invalid_request(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     with pytest.raises(InvalidRequest):
         ApiKeyService(container=container).revoke("fmg_00000000")
 
 
 def test_listing_never_exposes_the_hash(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     service = ApiKeyService(container=container)
     service.create(name="one")
@@ -183,14 +183,14 @@ def test_listing_never_exposes_the_hash(container) -> None:
 
 
 def test_creating_a_key_requires_a_name(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     with pytest.raises(InvalidRequest):
         ApiKeyService(container=container).create(name="   ")
 
 
 def test_creating_a_key_rejects_an_unknown_scope(container) -> None:
-    from fmaiily.api_keys import ApiKeyService
+    from gmail_automator.api_keys import ApiKeyService
 
     with pytest.raises(InvalidRequest) as excinfo:
         ApiKeyService(container=container).create(name="k", scopes=("send", "sudo"))

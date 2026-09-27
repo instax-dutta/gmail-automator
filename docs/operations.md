@@ -1,6 +1,6 @@
 # Operations
 
-Runbook for running Fmaiily day to day. Setup and Google Cloud steps are in
+Runbook for running gmail-automator day to day. Setup and Google Cloud steps are in
 [`google-cloud-setup.md`](google-cloud-setup.md); this file covers what to watch, what to do when
 something goes wrong, and how the system behaves under load.
 
@@ -11,8 +11,8 @@ something goes wrong, and how the system behaves under load.
 | Question | Command |
 |---|---|
 | Is the process up? | `GET /health` (unauthenticated) or `docker compose ps` |
-| What can it still send? | `fmaiily status`, or `GET /v1/quota` |
-| What is queued? | `fmaiily status --json` → `queue_depth` |
+| What can it still send? | `gmail-automator status`, or `GET /v1/quota` |
+| What is queued? | `gmail-automator status --json` → `queue_depth` |
 | What happened recently? | `GET /v1/history?limit=50` |
 | What is the per-job story? | `GET /v1/jobs/{id}` |
 
@@ -28,14 +28,14 @@ gateways on one host do not collide.
 
 | Metric | Type | Labels | Read it for |
 |---|---|---|---|
-| `fmaiily_sends_total` | counter | `account`, `outcome`, `source` | throughput and failure ratio |
-| `fmaiily_send_failures_total` | counter | `account`, `error_code` | which failure dominates |
-| `fmaiily_send_duration_seconds` | histogram | `account` | Gmail latency, p50/p95 |
-| `fmaiily_queue_depth` | gauge | - | backlog growth |
-| `fmaiily_quota_remaining` | gauge | `account`, `resource` | how close to the soft limit |
-| `fmaiily_tokens_refreshed_total` | counter | `account`, `result` | refresh health (`cached` dominates) |
-| `fmaiily_worker_iterations_total` | counter | `action` | worker liveness |
-| `fmaiily_http_requests_total` | counter | `method`, `path`, `status` | API traffic |
+| `gmail_automator_sends_total` | counter | `account`, `outcome`, `source` | throughput and failure ratio |
+| `gmail_automator_send_failures_total` | counter | `account`, `error_code` | which failure dominates |
+| `gmail_automator_send_duration_seconds` | histogram | `account` | Gmail latency, p50/p95 |
+| `gmail_automator_queue_depth` | gauge | - | backlog growth |
+| `gmail_automator_quota_remaining` | gauge | `account`, `resource` | how close to the soft limit |
+| `gmail_automator_tokens_refreshed_total` | counter | `account`, `result` | refresh health (`cached` dominates) |
+| `gmail_automator_worker_iterations_total` | counter | `action` | worker liveness |
+| `gmail_automator_http_requests_total` | counter | `method`, `path`, `status` | API traffic |
 
 HTTP metrics are labelled by **route template** (`/v1/jobs/{job_id}`), never by a concrete path, so
 a job id or an email address cannot become an unbounded label.
@@ -44,16 +44,16 @@ Alerts worth having:
 
 ```promql
 # queue not draining
-rate(fmaiily_queue_depth[15m]) > 0 and fmaiily_queue_depth > 50
+rate(gmail_automator_queue_depth[15m]) > 0 and gmail_automator_queue_depth > 50
 
 # a failure mode is dominating
-topk(3, rate(fmaiily_send_failures_total[10m]))
+topk(3, rate(gmail_automator_send_failures_total[10m]))
 
 # auth is broken: a rising share of refreshes failing
-rate(fmaiily_tokens_refreshed_total{result="error"}[15m]) > 0
+rate(gmail_automator_tokens_refreshed_total{result="error"}[15m]) > 0
 
 # quota pressure
-fmaiily_quota_remaining{resource="messages"} < 25
+gmail_automator_quota_remaining{resource="messages"} < 25
 ```
 
 ---
@@ -74,9 +74,9 @@ Events worth alerting on:
 | `account_paused` | Google throttled this user; the account cursor moved out |
 | `recovered_expired_leases` | a worker died mid-send and its jobs were requeued |
 | `maintenance` | payloads swept or history purged |
-| `auth_disabled_on_public_interface` | `FMAIILY_AUTH_MODE=none` on a non-loopback bind |
+| `auth_disabled_on_public_interface` | `GMAIL_AUTOMATOR_AUTH_MODE=none` on a non-loopback bind |
 
-Set `FMAIILY_LOG_LEVEL=DEBUG` only while diagnosing: it is verbose and still redacted.
+Set `GMAIL_AUTOMATOR_LOG_LEVEL=DEBUG` only while diagnosing: it is verbose and still redacted.
 
 ---
 
@@ -93,8 +93,8 @@ Set `FMAIILY_LOG_LEVEL=DEBUG` only while diagnosing: it is verbose and still red
 | `forbidden` | 403 | account revoked, or the key lacks the scope | reconnect, or issue a wider key |
 | `scope_missing` | 403 | the operation needs a scope the account lacks | reconnect with the extra scope |
 | `duplicate_request` | 409 | idempotency key reused with a different body | use a new key |
-| `attachment_too_large` | 413 | over `FMAIILY_ATTACHMENT_MAX_BYTES` | shrink the file |
-| `crypto_error` | 500 | a stored value cannot be decrypted | `FMAIILY_TOKEN_ENCRYPTION_KEY` changed: reconnect accounts |
+| `attachment_too_large` | 413 | over `GMAIL_AUTOMATOR_ATTACHMENT_MAX_BYTES` | shrink the file |
+| `crypto_error` | 500 | a stored value cannot be decrypted | `GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY` changed: reconnect accounts |
 
 ### The MCP client fails to connect
 
@@ -103,7 +103,7 @@ MCP clients do not follow a redirect for `POST`, so the client reports a connect
 error with nothing useful in the gateway log.
 
 This is deliberate and structural rather than a bug to file: the MCP SDK registers its handler as an
-absolute route, while a conventional ASGI mount only matches paths *below* its prefix. Fmaiily
+absolute route, while a conventional ASGI mount only matches paths *below* its prefix. gmail-automator
 therefore uses a custom mount that sits at the application root, matches everything, and hands any
 request outside the MCP prefix back to the parent app, which keeps ordinary `404` and `405` behaviour
 intact.
@@ -114,7 +114,7 @@ Two other causes look like this one:
   `Authorization: Bearer fmg_...`, and make sure the `Accept` header includes both
   `application/json` and `text/event-stream`.
 - **Nothing at all in the log, and a refused connection.** In stdio mode the client spawns a
-  subprocess. If `FMAIILY_DATABASE_URL` or `FMAIILY_TOKEN_ENCRYPTION_KEY` is not visible to that
+  subprocess. If `GMAIL_AUTOMATOR_DATABASE_URL` or `GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY` is not visible to that
   subprocess, it exits during settings validation. Run the command by hand with the same environment
   to see the error.
 
@@ -124,13 +124,13 @@ The refresh token is bad. The previous access token is preserved, so nothing is 
 expires. Fix:
 
 ```bash
-fmaiily accounts disconnect you@gmail.com
-fmaiily accounts connect          # open the printed URL and grant access again
+gmail-automator accounts disconnect you@gmail.com
+gmail-automator accounts connect          # open the printed URL and grant access again
 ```
 
 ### An account is stuck in `revoked`
 
-Expected after `DELETE /v1/accounts/{email}` or `fmaiily accounts disconnect`. Queued jobs for it
+Expected after `DELETE /v1/accounts/{email}` or `gmail-automator accounts disconnect`. Queued jobs for it
 fail with `send_failed` and the tokens are already deleted.
 
 ### Quota is exhausted but you believe it should not be
@@ -145,19 +145,19 @@ jobs are counted as reserved, which is why `used` can exceed what has actually b
 
 | What | Setting | Default | Wiped by |
 |---|---|---|---|
-| Queued MIME payload | `FMAIILY_PAYLOAD_RETENTION_HOURS` | 24 h | worker `maintenance` every 50 iterations |
-| Sent payload | `FMAIILY_KEEP_SENT_PAYLOADS` | `false` | immediately on a terminal state |
-| Send history | `FMAIILY_HISTORY_RETENTION_DAYS` | 30 d | worker `maintenance`; `fmaiily purge-history` |
+| Queued MIME payload | `GMAIL_AUTOMATOR_PAYLOAD_RETENTION_HOURS` | 24 h | worker `maintenance` every 50 iterations |
+| Sent payload | `GMAIL_AUTOMATOR_KEEP_SENT_PAYLOADS` | `false` | immediately on a terminal state |
+| Send history | `GMAIL_AUTOMATOR_HISTORY_RETENTION_DAYS` | 30 d | worker `maintenance`; `gmail-automator purge-history` |
 
 With `KEEP_SENT_PAYLOADS=false` no email body outlives its send. The database therefore grows with
-job *metadata*, not content. On a busy gateway, run `fmaiily purge-history` from cron if you care
+job *metadata*, not content. On a busy gateway, run `gmail-automator purge-history` from cron if you care
 about the file size:
 
 ```cron
-17 4 * * * cd /opt/fmaiily && docker compose exec -T fmaiily fmaiily purge-history
+17 4 * * * cd /opt/gmail_automator && docker compose exec -T gmail_automator gmail-automator purge-history
 ```
 
-If you need bodies for debugging, set `FMAIILY_KEEP_SENT_PAYLOADS=true` temporarily, understand that
+If you need bodies for debugging, set `GMAIL_AUTOMATOR_KEEP_SENT_PAYLOADS=true` temporarily, understand that
 you are now storing message content at rest, and turn it back off.
 
 ---
@@ -167,17 +167,17 @@ you are now storing message content at rest, and turn it back off.
 Two things matter:
 
 1. **The database** - holds encrypted tokens, queue state, and history.
-2. **`FMAIILY_TOKEN_ENCRYPTION_KEY`** - without it the tokens in that backup are unreadable.
+2. **`GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY`** - without it the tokens in that backup are unreadable.
 
 ```bash
 # SQLite - the runtime image has no sqlite3 CLI, but it does have Python's stdlib driver.
 # `sqlite3.Connection.backup` is a consistent online copy, unlike `cp` on a live file.
-docker compose exec -T fmaiily python -c \
-  "import sqlite3; s=sqlite3.connect('/data/fmaiily.db'); d=sqlite3.connect('/data/backup.db'); s.backup(d); d.close(); s.close()"
-docker compose cp fmaiily:/data/backup.db "./fmaiily-$(date +%F).db"
+docker compose exec -T gmail_automator python -c \
+  "import sqlite3; s=sqlite3.connect('/data/gmail_automator.db'); d=sqlite3.connect('/data/backup.db'); s.backup(d); d.close(); s.close()"
+docker compose cp gmail_automator:/data/backup.db "./gmail_automator-$(date +%F).db"
 
 # Postgres
-docker compose exec -T fmaiily pg_dump -U "$PGUSER" fmaiily > "fmaiily-$(date +%F).sql"
+docker compose exec -T gmail_automator pg_dump -U "$PGUSER" gmail_automator > "gmail_automator-$(date +%F).sql"
 ```
 
 Test a restore periodically: run the container against the restored file, connect an account, and
@@ -190,7 +190,7 @@ send one message.
 ### One process is enough for most deployments
 
 A single worker comfortably handles hundreds of messages a day, and the *pacing* - not CPU - is the
-limit: `FMAIILY_DEFAULT_SEND_INTERVAL_SECONDS=2.0` allows 1,800 messages per account per day while
+limit: `GMAIL_AUTOMATOR_DEFAULT_SEND_INTERVAL_SECONDS=2.0` allows 1,800 messages per account per day while
 staying far inside Gmail's cap.
 
 ### More than one process
@@ -201,7 +201,7 @@ job whose worker died. To run two:
 
 - point both at the same Postgres database (SQLite works for two processes on one host with WAL, but
   Postgres is the supported answer for anything else);
-- give each a distinct `FMAIILY_WORKER_ID` so a stuck job is attributable;
+- give each a distinct `GMAIL_AUTOMATOR_WORKER_ID` so a stuck job is attributable;
 - scrape `/metrics` from both - each process has its own registry.
 
 **Not shared across processes:** the per-key request rate limiter is in-memory, so with N processes a
@@ -209,8 +209,8 @@ key gets N times its configured limit. Put a shared limiter at the ingress if th
 
 ### Vertical instead of horizontal
 
-For very high volume, raise `FMAIILY_MAX_ATTEMPTS` and `FMAIILY_BACKOFF_MAX_SECONDS` so transient
-failures wait longer instead of cycling, and lower `FMAIILY_WORKER_POLL_INTERVAL_SECONDS` so a
+For very high volume, raise `GMAIL_AUTOMATOR_MAX_ATTEMPTS` and `GMAIL_AUTOMATOR_BACKOFF_MAX_SECONDS` so transient
+failures wait longer instead of cycling, and lower `GMAIL_AUTOMATOR_WORKER_POLL_INTERVAL_SECONDS` so a
 picked-up job is noticed sooner.
 
 ---
@@ -219,16 +219,16 @@ picked-up job is noticed sooner.
 
 ```bash
 uv sync --extra postgres
-export FMAIILY_DATABASE_URL="postgresql+psycopg://user:pass@host:5432/fmaiily"
-fmaiily migrate
+export GMAIL_AUTOMATOR_DATABASE_URL="postgresql+psycopg://user:pass@host:5432/gmail_automator"
+gmail-automator migrate
 ```
 
 The suite covers the backend-specific behaviour:
 
 ```bash
-docker run -d --name fmaiily-pg -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=fmaiily \
+docker run -d --name gmail_automator-pg -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=gmail_automator \
   -p 127.0.0.1:5432:5432 postgres:17-alpine
-FMAIILY_TEST_POSTGRES_URL="postgresql+psycopg://postgres:pw@127.0.0.1:5432/fmaiily" \
+GMAIL_AUTOMATOR_TEST_POSTGRES_URL="postgresql+psycopg://postgres:pw@127.0.0.1:5432/gmail_automator" \
   uv run pytest -m postgres
 ```
 
@@ -240,7 +240,7 @@ concurrent claim and enqueue from several threads, and timestamp round-tripping.
 ## Migrations
 
 ```bash
-fmaiily migrate            # upgrade to head
+gmail-automator migrate            # upgrade to head
 alembic downgrade -1       # one step back
 alembic history            # what exists
 ```
@@ -257,15 +257,15 @@ Two rules:
 
 ## Security checklist
 
-- [ ] `FMAIILY_TOKEN_ENCRYPTION_KEY` is 32 random bytes, stored in a secret manager, backed up.
-- [ ] `FMAIILY_AUTH_MODE=api_key` (not `none`).
-- [ ] `FMAIILY_BOOTSTRAP_ADMIN_KEY` removed once real keys exist.
+- [ ] `GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY` is 32 random bytes, stored in a secret manager, backed up.
+- [ ] `GMAIL_AUTOMATOR_AUTH_MODE=api_key` (not `none`).
+- [ ] `GMAIL_AUTOMATOR_BOOTSTRAP_ADMIN_KEY` removed once real keys exist.
 - [ ] Every key has the narrowest scopes and account allow-list that works.
 - [ ] The port is bound to loopback, or behind a TLS-terminating proxy.
 - [ ] `/metrics` is not publicly reachable (it contains account addresses as labels).
 - [ ] The container runs as uid 10001 with a single writable volume (`docker-smoke.sh` asserts it).
 - [ ] Log shipping retains JSON, not rendered console output.
-- [ ] `FMAIILY_KEEP_SENT_PAYLOADS=false` unless message bodies at rest are acceptable to you.
+- [ ] `GMAIL_AUTOMATOR_KEEP_SENT_PAYLOADS=false` unless message bodies at rest are acceptable to you.
 
 ---
 

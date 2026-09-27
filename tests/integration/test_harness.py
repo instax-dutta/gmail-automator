@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from fmaiily.container import build_container
+from gmail_automator.container import build_container
 from tests.support.fakes import FakeClock
 
 

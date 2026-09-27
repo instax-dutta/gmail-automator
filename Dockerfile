@@ -1,4 +1,4 @@
-# Fmaiily runtime image.
+# gmail-automator runtime image.
 #
 # Builds with either the classic builder or BuildKit: no `--mount` directives, so `docker build`
 # works on a stock Docker install. Swap the uv `COPY --from` line for a local `pip install uv` if
@@ -31,7 +31,7 @@ RUN uv pip install --system .
 # ---- runtime stage -----------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
 
-LABEL org.opencontainers.image.title="fmaiily" \
+LABEL org.opencontainers.image.title="gmail-automator" \
       org.opencontainers.image.description="Self-hosted Gmail gateway for AI agents (MCP + REST)" \
       org.opencontainers.image.licenses="MIT"
 
@@ -41,23 +41,23 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=build /usr/local/bin/fmaiily /usr/local/bin/fmaiily
+COPY --from=build /usr/local/bin/gmail-automator /usr/local/bin/gmail-automator
 
 # Alembic needs the migration files and alembic.ini at runtime; the app needs its own package.
 COPY migrations /app/migrations
 COPY alembic.ini /app/alembic.ini
 
 # R12: non-root uid, a single writable volume, no shell.
-RUN groupadd --gid 10001 fmaiily \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin fmaiily \
+RUN groupadd --gid 10001 gmailautomator \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin gmailautomator \
     && mkdir -p /data \
-    && chown -R fmaiily:fmaiily /data /app
+    && chown -R gmailautomator:gmailautomator /data /app
 USER 10001:10001
 
-ENV FMAIILY_DATABASE_URL=sqlite:////data/fmaiily.db \
-    FMAIILY_ALEMBIC_INI=/app/alembic.ini \
-    FMAIILY_HOST=0.0.0.0 \
-    FMAIILY_PORT=8000 \
+ENV GMAIL_AUTOMATOR_DATABASE_URL=sqlite:////data/gmail-automator.db \
+    GMAIL_AUTOMATOR_ALEMBIC_INI=/app/alembic.ini \
+    GMAIL_AUTOMATOR_HOST=0.0.0.0 \
+    GMAIL_AUTOMATOR_PORT=8000 \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8000
@@ -67,5 +67,5 @@ WORKDIR /app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8000/health || exit 1
 
-ENTRYPOINT ["fmaiily"]
+ENTRYPOINT ["gmail-automator"]
 CMD ["serve"]

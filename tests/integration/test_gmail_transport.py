@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from fmaiily.gmail.client import (
+from gmail_automator.gmail.client import (
     AuthExpired,
     GmailTransport,
     GoogleApiError,

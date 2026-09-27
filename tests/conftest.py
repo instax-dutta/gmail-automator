@@ -1,4 +1,4 @@
-"""Fmaiily test suite. Packages (not namespace dirs) so `tests.support` is importable."""
+"""gmail-automator test suite. Packages (not namespace dirs) so `tests.support` is importable."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pytest
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from fmaiily.config import Settings
-from fmaiily.db import Base, create_db_engine, create_session_factory
+from gmail_automator.config import Settings
+from gmail_automator.db import Base, create_db_engine, create_session_factory
 from tests.support.fakes import FakeClock, FakeGmailTransport, RecordingSleeper
 
 FAKE_KEY = base64.urlsafe_b64encode(b"t" * 32).decode()
@@ -63,7 +63,7 @@ def fake_transport() -> FakeGmailTransport:
 
 @pytest.fixture
 def container(settings: Settings, seeded_engine: Engine, fake_transport, fake_clock):
-    from fmaiily.container import build_container
+    from gmail_automator.container import build_container
 
     return build_container(
         settings, engine=seeded_engine, transport=fake_transport, clock=fake_clock

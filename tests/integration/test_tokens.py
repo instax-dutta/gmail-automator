@@ -3,11 +3,11 @@ from datetime import timedelta
 import httpx
 import pytest
 
-from fmaiily.accounts import AccountService
-from fmaiily.crypto import TokenCipher
-from fmaiily.errors import SendFailed
-from fmaiily.models import Account
-from fmaiily.tokens import TokenManager
+from gmail_automator.accounts import AccountService
+from gmail_automator.crypto import TokenCipher
+from gmail_automator.errors import SendFailed
+from gmail_automator.models import Account
+from gmail_automator.tokens import TokenManager
 from tests.support.fake_gmail_app import fake_gmail_app
 from tests.support.sync_asgi import sync_asgi_client
 

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from sqlalchemy import inspect, text
 
-from fmaiily.db import create_db_engine, run_migrations
+from gmail_automator.db import create_db_engine, run_migrations
 
 INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 VERSIONS = INI.parent / "migrations" / "versions"

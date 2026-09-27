@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-import fmaiily.db
+import gmail_automator.db
 from alembic import op
 
 revision: str = '0001'
@@ -29,19 +29,19 @@ def upgrade() -> None:
     sa.Column('account_type', sa.String(length=20), nullable=False),
     sa.Column('access_token_enc', sa.Text(), nullable=True),
     sa.Column('refresh_token_enc', sa.Text(), nullable=True),
-    sa.Column('token_expiry', fmaiily.db.UTCDateTime(), nullable=True),
+    sa.Column('token_expiry', gmail_automator.db.UTCDateTime(), nullable=True),
     sa.Column('scopes', sa.JSON(), nullable=False),
     sa.Column('token_uri', sa.String(length=255), nullable=False),
     sa.Column('status', sa.String(length=20), nullable=False),
-    sa.Column('last_refresh_at', fmaiily.db.UTCDateTime(), nullable=True),
+    sa.Column('last_refresh_at', gmail_automator.db.UTCDateTime(), nullable=True),
     sa.Column('last_refresh_error', sa.Text(), nullable=True),
     sa.Column('daily_message_limit', sa.Integer(), nullable=False),
     sa.Column('daily_recipient_limit', sa.Integer(), nullable=False),
     sa.Column('soft_limit_ratio', sa.Float(), nullable=False),
     sa.Column('send_interval_seconds', sa.Float(), nullable=False),
-    sa.Column('next_send_at', fmaiily.db.UTCDateTime(), nullable=True),
-    sa.Column('created_at', fmaiily.db.UTCDateTime(), nullable=False),
-    sa.Column('updated_at', fmaiily.db.UTCDateTime(), nullable=False),
+    sa.Column('next_send_at', gmail_automator.db.UTCDateTime(), nullable=True),
+    sa.Column('created_at', gmail_automator.db.UTCDateTime(), nullable=False),
+    sa.Column('updated_at', gmail_automator.db.UTCDateTime(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('accounts', schema=None) as batch_op:
@@ -56,9 +56,9 @@ def upgrade() -> None:
     sa.Column('scopes', sa.JSON(), nullable=False),
     sa.Column('allowed_accounts', sa.JSON(), nullable=True),
     sa.Column('rate_limit_per_minute', sa.Integer(), nullable=True),
-    sa.Column('created_at', fmaiily.db.UTCDateTime(), nullable=False),
-    sa.Column('last_used_at', fmaiily.db.UTCDateTime(), nullable=True),
-    sa.Column('revoked_at', fmaiily.db.UTCDateTime(), nullable=True),
+    sa.Column('created_at', gmail_automator.db.UTCDateTime(), nullable=False),
+    sa.Column('last_used_at', gmail_automator.db.UTCDateTime(), nullable=True),
+    sa.Column('revoked_at', gmail_automator.db.UTCDateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('api_keys', schema=None) as batch_op:
@@ -68,9 +68,9 @@ def upgrade() -> None:
     sa.Column('state', sa.String(length=64), nullable=False),
     sa.Column('redirect_uri', sa.String(length=500), nullable=False),
     sa.Column('account_hint', sa.String(length=320), nullable=True),
-    sa.Column('created_at', fmaiily.db.UTCDateTime(), nullable=False),
-    sa.Column('expires_at', fmaiily.db.UTCDateTime(), nullable=False),
-    sa.Column('consumed_at', fmaiily.db.UTCDateTime(), nullable=True),
+    sa.Column('created_at', gmail_automator.db.UTCDateTime(), nullable=False),
+    sa.Column('expires_at', gmail_automator.db.UTCDateTime(), nullable=False),
+    sa.Column('consumed_at', gmail_automator.db.UTCDateTime(), nullable=True),
     sa.PrimaryKeyConstraint('state')
     )
     op.create_table('send_jobs',
@@ -78,7 +78,7 @@ def upgrade() -> None:
     sa.Column('account_id', sa.Integer(), nullable=False),
     sa.Column('status', sa.String(length=20), nullable=False),
     sa.Column('raw_payload_enc', sa.Text(), nullable=True),
-    sa.Column('payload_expires_at', fmaiily.db.UTCDateTime(), nullable=True),
+    sa.Column('payload_expires_at', gmail_automator.db.UTCDateTime(), nullable=True),
     sa.Column('recipients', sa.Integer(), nullable=False),
     sa.Column('thread_id', sa.String(length=64), nullable=True),
     sa.Column('source', sa.String(length=20), nullable=False),
@@ -87,17 +87,17 @@ def upgrade() -> None:
     sa.Column('idempotency_key', sa.String(length=120), nullable=True),
     sa.Column('attempt_count', sa.Integer(), nullable=False),
     sa.Column('max_attempts', sa.Integer(), nullable=False),
-    sa.Column('scheduled_at', fmaiily.db.UTCDateTime(), nullable=False),
-    sa.Column('lease_expires_at', fmaiily.db.UTCDateTime(), nullable=True),
+    sa.Column('scheduled_at', gmail_automator.db.UTCDateTime(), nullable=False),
+    sa.Column('lease_expires_at', gmail_automator.db.UTCDateTime(), nullable=True),
     sa.Column('worker_id', sa.String(length=80), nullable=True),
     sa.Column('gmail_message_id', sa.String(length=64), nullable=True),
     sa.Column('gmail_thread_id', sa.String(length=64), nullable=True),
     sa.Column('error_code', sa.String(length=50), nullable=True),
     sa.Column('error_message', sa.Text(), nullable=True),
-    sa.Column('created_at', fmaiily.db.UTCDateTime(), nullable=False),
-    sa.Column('updated_at', fmaiily.db.UTCDateTime(), nullable=False),
-    sa.Column('sent_at', fmaiily.db.UTCDateTime(), nullable=True),
-    sa.Column('finished_at', fmaiily.db.UTCDateTime(), nullable=True),
+    sa.Column('created_at', gmail_automator.db.UTCDateTime(), nullable=False),
+    sa.Column('updated_at', gmail_automator.db.UTCDateTime(), nullable=False),
+    sa.Column('sent_at', gmail_automator.db.UTCDateTime(), nullable=True),
+    sa.Column('finished_at', gmail_automator.db.UTCDateTime(), nullable=True),
     sa.ForeignKeyConstraint(['account_id'], ['accounts.id'], ),
     sa.ForeignKeyConstraint(['api_key_id'], ['api_keys.id'], ),
     sa.PrimaryKeyConstraint('id'),
@@ -121,7 +121,7 @@ def upgrade() -> None:
     sa.Column('error_code', sa.String(length=50), nullable=True),
     sa.Column('error_message', sa.Text(), nullable=True),
     sa.Column('latency_ms', sa.Integer(), nullable=True),
-    sa.Column('created_at', fmaiily.db.UTCDateTime(), nullable=False),
+    sa.Column('created_at', gmail_automator.db.UTCDateTime(), nullable=False),
     sa.ForeignKeyConstraint(['account_id'], ['accounts.id'], ),
     sa.ForeignKeyConstraint(['job_id'], ['send_jobs.id'], ),
     sa.PrimaryKeyConstraint('id')

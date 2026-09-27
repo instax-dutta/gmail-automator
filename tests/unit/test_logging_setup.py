@@ -4,7 +4,7 @@ import logging
 import pytest
 import structlog
 
-from fmaiily.logging_setup import REDACTED, configure_logging, get_logger, redact_processor
+from gmail_automator.logging_setup import REDACTED, configure_logging, get_logger, redact_processor
 
 SECRET_FIELDS = (
     "access_token",
@@ -33,7 +33,9 @@ def _emitted(caplog: pytest.LogCaptureFixture) -> list[dict]:
 def test_structured_fields_are_passed_through(caplog: pytest.LogCaptureFixture) -> None:
     configure_logging(level="INFO", json_output=True)
     with caplog.at_level(logging.INFO):
-        get_logger("fmaiily.test").info("send_attempt", account="me@example.com", recipients=2)
+        get_logger("gmail_automator.test").info(
+            "send_attempt", account="me@example.com", recipients=2
+        )
     event = _emitted(caplog)[-1]
     assert event["event"] == "send_attempt"
     assert event["account"] == "me@example.com"
@@ -45,7 +47,7 @@ def test_structured_fields_are_passed_through(caplog: pytest.LogCaptureFixture) 
 def test_secrets_are_redacted_in_emitted_events(caplog: pytest.LogCaptureFixture) -> None:
     configure_logging(level="INFO", json_output=True)
     with caplog.at_level(logging.INFO):
-        get_logger("fmaiily.test").info(
+        get_logger("gmail_automator.test").info(
             "token_stuff",
             access_token="ya29.abcdef",
             refresh_token="1//refresh",
@@ -128,7 +130,7 @@ def test_redaction_ignores_non_string_values() -> None:
 
 def test_console_renderer_for_non_json(capfd: pytest.CaptureFixture[str]) -> None:
     configure_logging(level="INFO", json_output=False)
-    get_logger("fmaiily.test").info("hello", account="me@example.com")
+    get_logger("gmail_automator.test").info("hello", account="me@example.com")
     out = capfd.readouterr().out
     assert "hello" in out
     assert "me@example.com" in out

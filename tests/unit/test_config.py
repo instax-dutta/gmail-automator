@@ -4,20 +4,20 @@ import pathlib
 import pytest
 from pydantic import ValidationError
 
-from fmaiily.config import Settings
+from gmail_automator.config import Settings
 
 FAKE_KEY = base64.urlsafe_b64encode(b"0" * 32).decode()
 
 
 def test_defaults_require_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("FMAIILY_TOKEN_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY", raising=False)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
 
 
 def test_env_prefix_and_list_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FMAIILY_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
-    monkeypatch.setenv("FMAIILY_OAUTH_SCOPES", "a,b, c")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
+    monkeypatch.setenv("GMAIL_AUTOMATOR_OAUTH_SCOPES", "a,b, c")
     s = Settings(_env_file=None)
     assert s.oauth_scopes == ["a", "b", "c"]
     assert s.environment == "dev"
@@ -81,11 +81,11 @@ def test_service_account_scopes_parse_from_a_comma_separated_env_value(
     `enable_decoding=False` (master plan R13) means a bare JSON array from the environment is a
     type error, not a convenience. Operators get CSV, like every other list setting here.
     """
-    monkeypatch.setenv("FMAIILY_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
-    monkeypatch.setenv("FMAIILY_SERVICE_ACCOUNT_KEY_FILE", "/run/secrets/sa.json")
-    monkeypatch.setenv("FMAIILY_SERVICE_ACCOUNT_SUBJECT", "agent@acme.co")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
+    monkeypatch.setenv("GMAIL_AUTOMATOR_SERVICE_ACCOUNT_KEY_FILE", "/run/secrets/sa.json")
+    monkeypatch.setenv("GMAIL_AUTOMATOR_SERVICE_ACCOUNT_SUBJECT", "agent@acme.co")
     monkeypatch.setenv(
-        "FMAIILY_SERVICE_ACCOUNT_SCOPES",
+        "GMAIL_AUTOMATOR_SERVICE_ACCOUNT_SCOPES",
         "https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.compose",
     )
     settings = Settings(_env_file=None)
@@ -98,7 +98,7 @@ def test_service_account_scopes_parse_from_a_comma_separated_env_value(
 
 def test_service_account_scopes_default_to_send_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """Least privilege by default: nothing beyond gmail.send without an explicit override."""
-    monkeypatch.setenv("FMAIILY_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
+    monkeypatch.setenv("GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY", FAKE_KEY)
     settings = Settings(_env_file=None)
     assert settings.service_account_scopes == ["https://www.googleapis.com/auth/gmail.send"]
     assert settings.is_service_account_configured is False

@@ -10,16 +10,16 @@ from pydantic import SecretStr
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
-from fmaiily.accounts import AccountService
-from fmaiily.config import Settings
-from fmaiily.container import Container, build_container
-from fmaiily.crypto import TokenCipher
-from fmaiily.history import HistoryService
-from fmaiily.metrics import Metrics
-from fmaiily.queue import QueueService
-from fmaiily.quota import QuotaService
-from fmaiily.send import SendService
-from fmaiily.tokens import TokenManager
+from gmail_automator.accounts import AccountService
+from gmail_automator.config import Settings
+from gmail_automator.container import Container, build_container
+from gmail_automator.crypto import TokenCipher
+from gmail_automator.history import HistoryService
+from gmail_automator.metrics import Metrics
+from gmail_automator.queue import QueueService
+from gmail_automator.quota import QuotaService
+from gmail_automator.send import SendService
+from gmail_automator.tokens import TokenManager
 from tests.support.fake_gmail_app import DEFAULT_ACCOUNT, fake_gmail_app
 from tests.support.fakes import FakeClock, FakeGmailTransport, RecordingSleeper
 from tests.support.sync_asgi import sync_asgi_client

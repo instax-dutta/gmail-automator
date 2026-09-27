@@ -1,6 +1,6 @@
 """Service accounts and domain-wide delegation (Phase 3, P6).
 
-A Workspace admin can authorize a service account to impersonate a user. Fmaiily then obtains access
+A Workspace admin can authorize a service account to impersonate a user. gmail-automator then obtains access
 tokens by signed JWT assertion instead of an interactive consent flow, so an unattended deployment
 can send as a Workspace mailbox with no refresh token stored at all.
 
@@ -19,8 +19,8 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from fmaiily.errors import InvalidRequest, SendFailed
-from fmaiily.service_accounts import (
+from gmail_automator.errors import InvalidRequest, SendFailed
+from gmail_automator.service_accounts import (
     SERVICE_ACCOUNT_SCOPES,
     ServiceAccountConfig,
     load_service_account_key,
@@ -52,7 +52,7 @@ def key_json(rsa_key: dict[str, str]) -> dict[str, Any]:
         "project_id": "acme-agents",
         "private_key_id": "key-1",
         "private_key": rsa_key["private_key"],
-        "client_email": "fmaiily@acme-agents.iam.gserviceaccount.com",
+        "client_email": "gmail_automator@acme-agents.iam.gserviceaccount.com",
         "client_id": "1234567890",
         "token_uri": TOKEN_URI,
     }

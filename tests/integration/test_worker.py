@@ -3,9 +3,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import SecretStr
 
-from fmaiily.container import Container, build_container
-from fmaiily.gmail.client import GoogleApiError
-from fmaiily.worker import ProcessResult, Worker
+from gmail_automator.container import Container, build_container
+from gmail_automator.gmail.client import GoogleApiError
+from gmail_automator.worker import ProcessResult, Worker
 from tests.support.fake_gmail_app import DEFAULT_ACCOUNT, fake_gmail_app
 from tests.support.fakes import FakeGmailTransport
 from tests.support.sync_asgi import sync_asgi_client
@@ -206,7 +206,7 @@ def test_retry_after_header_is_honored(
 def test_auth_expired_triggers_one_refresh_and_retry(
     worker: Worker, wcontainer: Container, connected, fake_transport: FakeGmailTransport
 ) -> None:
-    from fmaiily.gmail.client import AuthExpired
+    from gmail_automator.gmail.client import AuthExpired
 
     fake_transport.script_error(AuthExpired(status_code=401, reason="authError", message="stale"))
     job_id = _enqueue(wcontainer)
@@ -221,7 +221,7 @@ def test_auth_expired_triggers_one_refresh_and_retry(
 def test_persistent_auth_failure_fails_the_job(
     worker: Worker, wcontainer: Container, connected, fake_transport: FakeGmailTransport
 ) -> None:
-    from fmaiily.gmail.client import AuthExpired
+    from gmail_automator.gmail.client import AuthExpired
 
     for _ in range(2):
         fake_transport.script_error(
@@ -280,7 +280,7 @@ def test_worker_fails_the_job_when_the_account_disappeared(
 def test_worker_fails_the_job_without_a_payload(worker: Worker, wcontainer: Container, connected):
     job_id = _enqueue(wcontainer)
     with wcontainer.session_factory() as session:
-        from fmaiily.models import SendJob
+        from gmail_automator.models import SendJob
 
         row = session.get(SendJob, job_id)
         row.raw_payload_enc = None
@@ -324,7 +324,7 @@ def test_recovered_job_reports_its_new_worker(
 
 def test_full_path_from_send_service_to_gmail(wcontainer: Container, connected, sleeper):
     """SendService -> queue -> worker -> transport, with no worker thread in between."""
-    from fmaiily.gmail.mime import OutgoingMessage
+    from gmail_automator.gmail.mime import OutgoingMessage
 
     transport = wcontainer.transport
     assert isinstance(transport, FakeGmailTransport)
@@ -348,9 +348,9 @@ def test_full_path_from_send_service_to_gmail(wcontainer: Container, connected, 
 def test_quota_refusal_never_reaches_the_worker(
     wcontainer: Container, connected, fake_transport: FakeGmailTransport
 ):
-    from fmaiily.errors import QuotaExceeded
-    from fmaiily.gmail.mime import OutgoingMessage
-    from fmaiily.models import SendJob
+    from gmail_automator.errors import QuotaExceeded
+    from gmail_automator.gmail.mime import OutgoingMessage
+    from gmail_automator.models import SendJob
 
     for _ in range(425):
         with wcontainer.session_factory() as session:

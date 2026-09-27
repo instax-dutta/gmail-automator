@@ -8,7 +8,7 @@ body:
       label: The problem
       description: |
         Describe the situation you are in, not the solution you have in mind. What are you trying to
-        do, and what does Fmaiily do instead?
+        do, and what does gmail-automator do instead?
       validations:
         required: true
   - type: textarea

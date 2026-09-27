@@ -13,12 +13,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from fmaiily.container import Container
-from fmaiily.drafts import COMPOSE_SCOPES, SEND_SCOPE, DraftService, has_compose_scope
-from fmaiily.errors import Forbidden, ScopeMissing
-from fmaiily.gmail.client import DraftResult, GoogleApiError
-from fmaiily.gmail.mime import OutgoingMessage
-from fmaiily.worker import Worker
+from gmail_automator.container import Container
+from gmail_automator.drafts import COMPOSE_SCOPES, SEND_SCOPE, DraftService, has_compose_scope
+from gmail_automator.errors import Forbidden, ScopeMissing
+from gmail_automator.gmail.client import DraftResult, GoogleApiError
+from gmail_automator.gmail.mime import OutgoingMessage
+from gmail_automator.worker import Worker
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 COMPOSER = "composer@example.com"
@@ -153,7 +153,7 @@ def test_drafting_leaves_the_send_worker_idle(drafts: DraftService) -> None:
 
 
 def test_compose_scope_is_a_connect_time_choice(drafts: DraftService) -> None:
-    """Fmaiily cannot widen a grant silently: the operator reconnects with the extra scope."""
+    """gmail-automator cannot widen a grant silently: the operator reconnects with the extra scope."""
     assert COMPOSE_SCOPES == (
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.compose",

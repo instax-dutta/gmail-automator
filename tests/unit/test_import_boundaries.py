@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "fmaiily"
+SRC = Path(__file__).resolve().parents[2] / "src" / "gmail_automator"
 
-#: third-party module -> the only fmaiily modules allowed to import it
+#: third-party module -> the only gmail_automator modules allowed to import it
 IMPORT_ALLOWLIST: dict[str, set[str]] = {
     "googleapiclient": {"gmail/client.py"},
     "google.auth": {"gmail/client.py", "tokens.py"},

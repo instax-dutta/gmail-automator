@@ -1,0 +1,6 @@
+# The repository was authored under a placeholder identity before it had an owner. Map it to
+# the real GitHub identity so `git log` and the GitHub UI show the right author, without
+# rewriting published history.
+#
+# Format: the identity to display first, the identity to match second.
+R4C3R0P <54683866+instax-dutta@users.noreply.github.com> Fmaiily contributors <dev@fmaiily.local>

@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from html import escape
 
-from fmaiily.models import SendJob
-from fmaiily.status_page import collect, render
+from gmail_automator.models import SendJob
+from gmail_automator.status_page import collect, render
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 
@@ -26,7 +26,7 @@ def test_collect_reports_every_account(wired, accounts, connected) -> None:
 
 
 def test_collect_counts_the_queue(wired, sender, account) -> None:
-    from fmaiily.gmail.mime import OutgoingMessage
+    from gmail_automator.gmail.mime import OutgoingMessage
 
     for index in range(2):
         sender.send(
@@ -63,12 +63,12 @@ def test_render_is_valid_html_with_the_key_numbers(wired, connected) -> None:
 def test_render_explains_an_empty_installation(wired) -> None:
     html = render(collect(wired, now=NOW))
     assert "No Gmail account is connected" in html
-    assert "fmaiily accounts connect" in html
+    assert "gmail-automator accounts connect" in html
 
 
 def test_render_escapes_an_account_address(wired, accounts) -> None:
     """An address is operator-supplied data; it must never become markup."""
-    from fmaiily.errors import InvalidRequest
+    from gmail_automator.errors import InvalidRequest
 
     hostile = "a<b>@example.com"
     try:
@@ -124,7 +124,7 @@ def test_a_used_window_shows_a_bar_and_a_reset_time(
 
 
 def test_collect_uses_the_injected_clock(wired, sender, account) -> None:
-    from fmaiily.gmail.mime import OutgoingMessage
+    from gmail_automator.gmail.mime import OutgoingMessage
 
     sender.send(
         account_email=None,

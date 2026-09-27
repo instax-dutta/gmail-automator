@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "fmaiily"
+name = "gmail-automator"
 version = "0.1.0"
 description = "Self-hosted Gmail gateway for AI agents: MCP tools and a REST API, with encrypted tokens and Gmail quota enforcement"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Fmaiily contributors" }]
+authors = [{ name = "gmail-automator contributors" }]
 keywords = ["gmail", "mcp", "ai-agents", "email", "self-hosted", "oauth", "fastapi"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -67,10 +67,10 @@ Changelog = "https://github.com/instax-dutta/gmail-automator/blob/main/CHANGELOG
 Discussions = "https://github.com/instax-dutta/gmail-automator/discussions"
 
 [project.scripts]
-fmaiily = "fmaiily.cli:app"
+gmail-automator = "gmail_automator.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/fmaiily"]
+packages = ["src/gmail_automator"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -96,13 +96,13 @@ testpaths = ["tests"]
 addopts = "-q --strict-markers --strict-config"
 markers = [
   "e2e: end-to-end tests (opt-in, may bind local ports)",
-  "postgres: requires FMAIILY_TEST_POSTGRES_URL",
+  "postgres: requires GMAIL_AUTOMATOR_TEST_POSTGRES_URL",
 ]
 
 [tool.coverage.run]
-source = ["fmaiily"]
+source = ["gmail_automator"]
 branch = true
-omit = ["src/fmaiily/cli.py"]
+omit = ["src/gmail_automator/cli.py"]
 
 [tool.ruff]
 line-length = 100

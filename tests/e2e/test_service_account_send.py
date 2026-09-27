@@ -10,12 +10,12 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from fmaiily.container import Container, build_container
-from fmaiily.db import Base, create_db_engine
-from fmaiily.errors import SendFailed
-from fmaiily.gmail.mime import OutgoingMessage
-from fmaiily.service_accounts import SERVICE_ACCOUNT_SCOPES, ServiceAccountConfig
-from fmaiily.worker import Worker
+from gmail_automator.container import Container, build_container
+from gmail_automator.db import Base, create_db_engine
+from gmail_automator.errors import SendFailed
+from gmail_automator.gmail.mime import OutgoingMessage
+from gmail_automator.service_accounts import SERVICE_ACCOUNT_SCOPES, ServiceAccountConfig
+from gmail_automator.worker import Worker
 from tests.support.fakes import FakeClock, FakeGmailTransport
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
@@ -43,7 +43,7 @@ def key_file(tmp_path, rsa_key: str) -> str:
                 "project_id": "acme-agents",
                 "private_key_id": "key-1",
                 "private_key": rsa_key,
-                "client_email": "fmaiily@acme-agents.iam.gserviceaccount.com",
+                "client_email": "gmail_automator@acme-agents.iam.gserviceaccount.com",
                 "client_id": "1234567890",
                 "token_uri": TOKEN_URI,
             }
@@ -93,7 +93,7 @@ def _register(container: Container) -> None:
 def test_the_container_loads_the_key(sa_container: Container) -> None:
     config = sa_container.service_account
     assert isinstance(config, ServiceAccountConfig)
-    assert config.client_email == "fmaiily@acme-agents.iam.gserviceaccount.com"
+    assert config.client_email == "gmail_automator@acme-agents.iam.gserviceaccount.com"
     assert config.subject == SUBJECT
 
 
@@ -210,7 +210,7 @@ def test_a_half_configured_service_account_is_ignored(settings, seeded_engine, k
 
 
 def test_a_bad_key_path_fails_loudly_at_startup(settings, seeded_engine) -> None:
-    from fmaiily.errors import InvalidRequest
+    from gmail_automator.errors import InvalidRequest
 
     tuned = settings.model_copy(
         update={

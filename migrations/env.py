@@ -4,8 +4,8 @@ from logging.config import fileConfig
 
 from alembic import context
 
-from fmaiily import models  # noqa: F401 - registers models on Base.metadata
-from fmaiily.db import Base, create_db_engine
+from gmail_automator import models  # noqa: F401 - registers models on Base.metadata
+from gmail_automator.db import Base, create_db_engine
 
 config = context.config
 if config.config_file_name is not None:
