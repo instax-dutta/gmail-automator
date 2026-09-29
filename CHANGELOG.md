@@ -11,6 +11,15 @@ already merged.
 
 ### Fixed
 
+- The OAuth connect flow could not complete in `auth_mode=api_key`: `GET /v1/oauth/google/callback`
+  was behind the API-key gate, but Google redirects the operator's browser there and a browser
+  navigation cannot set an `Authorization` header, so it answered `401 missing Authorization
+  header`. The callback is now unauthenticated, which is inherent to the OAuth flow; the
+  single-use, expiring `state` is the CSRF protection a bearer token would have provided. Starting
+  a consent flow and disconnecting an account still require a key. The whole REST suite ran in
+  `auth_mode=none`, which bypasses the auth gate, so nothing exercised the callback the way a real
+  deployment does; new tests run it under `auth_mode=api_key`.
+
 - The MCP endpoint answered `421 Invalid Host header` to every client except one on loopback. The
   MCP SDK auto-enables DNS-rebinding protection with a hard-coded loopback allowlist whenever it is
   not told the real bind address, and the gateway was not passing it, so a gateway on a Tailscale

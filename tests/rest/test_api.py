@@ -407,3 +407,53 @@ class TestMcpHostAllowlist:
             "mail.example.com",
             "chat.example.com",
         ]
+
+
+class TestOAuthCallbackReachableByABrowser:
+    """The callback is the one route a browser reaches with no API key.
+
+    Google redirects the operator's browser straight to `/v1/oauth/google/callback`, and a browser
+    navigation cannot set an `Authorization` header. Gating it like every other `/v1` route made
+    the connect flow return `401 missing Authorization header` in `auth_mode=api_key` - the mode a
+    real deployment runs. The whole REST suite used to run in `auth_mode=none`, which bypasses the
+    auth gate, so nothing caught it.
+    """
+
+    def test_the_callback_works_with_no_authorization_header(self, authed_client) -> None:
+        test_client, key = authed_client
+        start = test_client.get(
+            "/v1/oauth/google/start", headers={"authorization": f"Bearer {key}"}
+        )
+        assert start.status_code == 200, start.text
+        body = test_client.get(
+            "/v1/oauth/google/callback",
+            params={"code": "abc", "state": start.json()["state"]},
+        )
+        assert body.status_code == 200, body.text
+        assert body.json()["account"] == "sender@example.com"
+
+    def test_start_still_requires_a_key(self, key_client) -> None:
+        test_client, _issue = key_client
+        assert test_client.get("/v1/oauth/google/start").status_code == 401
+
+    def test_disconnect_still_requires_a_key(self, key_client) -> None:
+        test_client, _issue = key_client
+        assert test_client.delete("/v1/oauth/google/sender@example.com").status_code == 401
+
+    def test_a_bad_state_is_rejected_without_a_key(self, key_client) -> None:
+        """Unauthenticated does not mean unguarded: without a valid stored state, nothing happens."""
+        test_client, _issue = key_client
+        response = test_client.get(
+            "/v1/oauth/google/callback", params={"code": "abc", "state": "not-a-real-state"}
+        )
+        assert response.status_code >= 400
+        assert response.json()["error"]["code"] != "internal_error"
+
+    def test_a_state_cannot_be_replayed(self, key_client) -> None:
+        test_client, issue = key_client
+        headers = {"authorization": f"Bearer {issue(name='agent', scopes=('read', 'send'))}"}
+        state = test_client.get("/v1/oauth/google/start", headers=headers).json()["state"]
+        first = test_client.get("/v1/oauth/google/callback", params={"code": "abc", "state": state})
+        assert first.status_code == 200
+        again = test_client.get("/v1/oauth/google/callback", params={"code": "abc", "state": state})
+        assert again.status_code >= 400

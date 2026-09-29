@@ -5,13 +5,13 @@ from pydantic import BaseModel, Field
 
 from gmail_automator.container import require
 from gmail_automator.oauth import ConnectedAccount
-from gmail_automator.rest.deps import ContainerDep, authenticate
+from gmail_automator.rest.deps import CallerDep, ContainerDep, authenticate
 
-#: Every /v1 router requires a resolved caller. Routes that need the identity itself
-#: declare `CallerDep` too; FastAPI caches the dependency, so it authenticates once.
+#: Every /v1 router requires a resolved caller, declared per route rather than on the router:
+#: the callback is the one route a browser reaches without an API key.
 AUTH = [Depends(authenticate)]
 
-router = APIRouter(prefix="/v1/oauth/google", tags=["oauth"], dependencies=AUTH)
+router = APIRouter(prefix="/v1/oauth/google", tags=["oauth"])
 
 
 class AuthorizationResponse(BaseModel):
@@ -39,6 +39,7 @@ class DisconnectedResponse(BaseModel):
 )
 def start(
     container: ContainerDep,
+    caller: CallerDep,
     login_hint: str | None = None,
     redirect_uri: str | None = None,
 ) -> AuthorizationResponse:
@@ -57,7 +58,14 @@ def start(
 
 @router.get("/callback", response_model=ConnectedResponse, summary="Google OAuth redirect target")
 def callback(container: ContainerDep, code: str, state: str) -> ConnectedResponse:
-    """Exchange the authorization code, identify the address, and store encrypted tokens."""
+    """Exchange the authorization code, identify the address, and store encrypted tokens.
+
+    Deliberately unauthenticated: Google redirects the operator's browser here, and a browser
+    navigation cannot carry an `Authorization` header. Requiring an API key made the connect flow
+    impossible outside `auth_mode=none`. The single-use, expiring `state` is the CSRF protection
+    that a bearer token would otherwise have provided - without a valid stored state this route
+    exchanges nothing.
+    """
     connected: ConnectedAccount = require(container, "oauth").callback(code=code, state=state)
     return ConnectedResponse(
         account=connected.email,
@@ -72,7 +80,7 @@ def callback(container: ContainerDep, code: str, state: str) -> ConnectedRespons
     response_model=DisconnectedResponse,
     summary="Disconnect an account and drop its tokens",
 )
-def disconnect(container: ContainerDep, account: str) -> DisconnectedResponse:
+def disconnect(container: ContainerDep, account: str, caller: CallerDep) -> DisconnectedResponse:
     require(container, "oauth").revoke(account)
     return DisconnectedResponse(account=account, status="revoked")
 
