@@ -70,6 +70,11 @@ GMAIL_AUTOMATOR_TEST_POSTGRES_URL=postgresql+psycopg://postgres:postgres@localho
   safe default, and a line in `.env.example`.
 - **Secrets go to the logger as keyword arguments**, never interpolated into the event string.
   Redaction is key-based, so a new secret needs a new key in the denylist.
+- **No credential is ever written down.** `tests/unit/test_no_hardcoded_credentials.py` fails the
+  build on a credential-shaped literal anywhere in `src/`, `migrations/`, `scripts/`, or the
+  packaging files, and on a literal in this project's own `fmg_<prefix>_<secret>` key format
+  anywhere in `tests/`. A test that needs a key generates one at runtime. A faked *provider* key
+  shape such as `GOCSPX-test-secret` is fine and useful; a real one is not.
 
 ## Adding an MCP tool or a route
 

@@ -79,13 +79,27 @@ def test_a_valid_key_is_accepted(authed_client) -> None:
     assert response.status_code == 200
 
 
-def test_bootstrap_admin_key_is_accepted(authed_client) -> None:
-    test_client, _ = authed_client
+def test_bootstrap_admin_key_is_accepted(bootstrap_client) -> None:
+    test_client, bootstrap_key = bootstrap_client
+    response = test_client.get(
+        "/v1/accounts",
+        headers={"authorization": f"Bearer {bootstrap_key}"},
+    )
+    assert response.status_code == 200
+
+
+def test_a_stale_constant_from_the_test_suite_is_not_a_key(bootstrap_client) -> None:
+    """The suite used to hardcode `fmg_REDACTED_IN_HISTORY`, which parsed as a real key.
+
+    A fixed literal in a public test suite is a credential an operator could paste into a
+    production env file. Keys are generated per run now, and this pins that the old value is dead.
+    """
+    test_client, _bootstrap_key = bootstrap_client
     response = test_client.get(
         "/v1/accounts",
         headers={"authorization": "Bearer fmg_REDACTED_IN_HISTORY"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 401
 
 
 def test_health_stays_open_when_auth_is_on(authed_client) -> None:
@@ -302,6 +316,10 @@ class TestMcpHostAllowlist:
     not told the real bind address, so a gateway on a Tailscale IP or behind a reverse proxy
     answered every non-loopback client with 421. These tests pin the allowlist to the bind host
     and to whatever the operator declares, and pin that an undeclared host is still refused.
+
+    The bind host here is 192.0.2.10, from RFC 5737 TEST-NET-1, rather than the address of a real
+    deployment: a test should not publish someone's infrastructure, and the address is the point
+    of the test only in that it is not loopback.
     """
 
     def _app_for_bind(

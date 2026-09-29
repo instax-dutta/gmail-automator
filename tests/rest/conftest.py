@@ -76,7 +76,22 @@ def connected(http_container: Container) -> str:
 
 
 @pytest.fixture
-def key_client(http_container: Container) -> Iterator[tuple[TestClient, Any]]:
+def _random_bootstrap_key() -> str:
+    """A throwaway admin key, generated per test run.
+
+    A fixed literal would be a working credential published in a public repository: the parser
+    accepts any `fmg_<prefix>_<secret>` with non-empty parts, so a copy-pasteable constant in the
+    test suite is a key an operator could accidentally deploy with.
+    """
+    import secrets
+
+    return f"fmg_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}"
+
+
+@pytest.fixture
+def key_client(
+    http_container: Container, _random_bootstrap_key: str
+) -> Iterator[tuple[TestClient, Any]]:
     """An app in `auth_mode=api_key`, plus a factory for issuing keys against it."""
     from gmail_automator.api_keys import ApiKeyService
 
@@ -84,7 +99,7 @@ def key_client(http_container: Container) -> Iterator[tuple[TestClient, Any]]:
     container.settings = container.settings.model_copy(
         update={
             "auth_mode": "api_key",
-            "bootstrap_admin_key": SecretStr("fmg_REDACTED_IN_HISTORY"),
+            "bootstrap_admin_key": SecretStr(_random_bootstrap_key),
         }
     )
 
@@ -103,6 +118,13 @@ def key_client(http_container: Container) -> Iterator[tuple[TestClient, Any]]:
 def authed_client(key_client) -> tuple[TestClient, str]:
     test_client, issue = key_client
     return test_client, issue(name="agent", scopes=("send", "read"))
+
+
+@pytest.fixture
+def bootstrap_client(key_client, _random_bootstrap_key: str) -> tuple[TestClient, str]:
+    """The app plus the generated bootstrap admin key it was configured with."""
+    test_client, _issue = key_client
+    return test_client, _random_bootstrap_key
 
 
 @pytest.fixture(autouse=True)
