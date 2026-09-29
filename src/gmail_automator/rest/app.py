@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.routing import Match, Mount
 
 from gmail_automator import __version__
@@ -283,7 +284,11 @@ def _mount_mcp(app: FastAPI, settings: Settings | None) -> None:
     from gmail_automator.mcp_server.server import create_mcp_server
 
     mcp = create_mcp_server(lambda: _container_of(app))
-    http_app = mcp.streamable_http_app(stateless_http=True)
+    http_app = mcp.streamable_http_app(
+        stateless_http=True,
+        host=settings.host,
+        transport_security=_mcp_transport_security(settings),
+    )
     app.state.mcp_http_app = http_app
     app.state.mcp_session_manager = mcp.session_manager
     path = settings.mcp_mount_path
@@ -291,6 +296,53 @@ def _mount_mcp(app: FastAPI, settings: Settings | None) -> None:
         McpMount(mcp_app=http_app, parent=app, settings=settings, mount_path=path)
     )
     _log.info("mcp_mounted", path=path)
+
+
+def _host_pattern(entry: str) -> str:
+    """Accept a bare hostname, an explicit port, or a pattern, and produce a pattern.
+
+    The SDK only honours a Host match that is an exact string or ends in ``:*``, so an operator
+    writing ``GMAIL_AUTOMATOR_MCP_ALLOWED_HOSTS=mail.example.com`` would silently get 421 unless
+    they guessed the wildcard syntax. Normalising here means the obvious input is the right one.
+    """
+    if entry.endswith(":*"):
+        return entry
+    if entry.startswith("["):  # IPv6 literal, e.g. [::1]
+        return f"{entry}:*" if entry.endswith("]") else entry
+    return entry if ":" in entry else f"{entry}:*"
+
+
+def _mcp_transport_security(settings: Settings) -> TransportSecuritySettings:
+    """Build the MCP endpoint's DNS-rebinding allowlist from the real bind address.
+
+    The SDK only auto-enables this check for loopback, and hard-codes loopback hosts when it does.
+    A gateway bound to a Tailscale address, a container port, or a reverse proxy therefore answers
+    every non-loopback client with 421 - the endpoint is unreachable for anyone but the host it runs
+    on. Rather than switching the check off, allowlist what the gateway is actually reachable as:
+    its configured bind host, loopback, and anything the operator names.
+
+    A wildcard bind address cannot identify a host, so the operator's list is the only source;
+    the gateway logs a warning rather than guessing.
+    """
+    hosts = [*settings.mcp_allowed_hosts]
+    if settings.host not in ("0.0.0.0", "::", ""):
+        hosts.append(settings.host)
+    hosts += ["127.0.0.1", "localhost", "[::1]"]
+    hosts = [_host_pattern(h) for h in hosts]
+    if len(hosts) == 3 and not settings.mcp_allowed_hosts:
+        _log.warning(
+            "mcp_allowed_hosts_unset",
+            bind_host=settings.host,
+            hint=(
+                "bound to a wildcard address, so the MCP endpoint only answers loopback clients. "
+                "Set GMAIL_AUTOMATOR_MCP_ALLOWED_HOSTS to the hostname clients use."
+            ),
+        )
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=[f"http://{h}" for h in hosts],
+    )
 
 
 def _container_of(app: FastAPI) -> Container:

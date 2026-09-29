@@ -108,6 +108,22 @@ therefore uses a custom mount that sits at the application root, matches everyth
 request outside the MCP prefix back to the parent app, which keeps ordinary `404` and `405` behaviour
 intact.
 
+### Every MCP client gets 421
+
+`421 Invalid Host header` means the request reached the gateway and was refused on its `Host`
+header. The MCP endpoint answers only the host it is bound to, plus loopback, plus anything in
+`GMAIL_AUTOMATOR_MCP_ALLOWED_HOSTS` - this is DNS-rebinding protection, not a bug to report.
+
+The usual cause is a gateway that cannot know the name it is reached by:
+
+- bound to `0.0.0.0` (the container default), then reached at `mail.example.com` - set
+  `GMAIL_AUTOMATOR_MCP_ALLOWED_HOSTS=mail.example.com`
+- reached over a Tailscale address or a published port - the bind host is allowlisted
+  automatically, so this should not happen; if it does, the client is rewriting the Host header
+
+Check what the gateway logged at startup: `mcp_allowed_hosts_unset` means it is on a wildcard
+address with no host declared, so only loopback clients can reach `/mcp`.
+
 Two other causes look like this one:
 
 - **`401` on `/mcp`.** The MCP endpoint is behind the same API key as `/v1`. Send

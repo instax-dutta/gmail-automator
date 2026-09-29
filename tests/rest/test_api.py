@@ -2,8 +2,22 @@
 
 from __future__ import annotations
 
+import base64
+
 import pytest
 from fastapi.testclient import TestClient
+
+from gmail_automator.config import Settings
+from gmail_automator.container import build_container
+from gmail_automator.rest.app import create_app
+from tests.rest.conftest import FAKE_APP
+from tests.support.sync_asgi import sync_asgi_client
+
+
+@pytest.fixture
+def token_key() -> str:
+    """Obviously fake, per the test-fixture rule: no real credential ever enters the suite."""
+    return base64.urlsafe_b64encode(b"r" * 32).decode()
 
 
 def _error(response) -> dict:
@@ -279,3 +293,117 @@ def test_send_limits_exposes_the_enforced_policy(
     assert body["soft_limit_ratio"] == pytest.approx(0.85)
     assert body["max_recipients_per_message"] == 500
     assert body["send_interval_seconds"] == pytest.approx(2.0)
+
+
+class TestMcpHostAllowlist:
+    """The MCP endpoint must answer the host the gateway is actually reached by.
+
+    The SDK auto-enables DNS-rebinding protection with a loopback-only allowlist whenever it is
+    not told the real bind address, so a gateway on a Tailscale IP or behind a reverse proxy
+    answered every non-loopback client with 421. These tests pin the allowlist to the bind host
+    and to whatever the operator declares, and pin that an undeclared host is still refused.
+    """
+
+    def _app_for_bind(
+        self, http_settings, seeded_engine, fake_clock, sleeper, fake_transport, **kw
+    ):
+        tuned = http_settings.model_copy(update=kw)
+        container = build_container(
+            tuned,
+            engine=seeded_engine,
+            transport=fake_transport,
+            clock=fake_clock,
+            sleeper=sleeper,
+            http=sync_asgi_client(FAKE_APP, base_url="http://oauth.test"),
+        )
+        return TestClient(create_app(container, settings=tuned, start_worker=False))
+
+    def _post_mcp(self, client: TestClient, host: str | None) -> int:
+        headers = {
+            "content-type": "application/json",
+            "accept": "application/json, text/event-stream",
+        }
+        if host is not None:
+            headers["host"] = host
+        return client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            headers=headers,
+        ).status_code
+
+    def test_the_configured_bind_host_is_accepted(
+        self, http_settings, seeded_engine, fake_clock, sleeper, fake_transport
+    ) -> None:
+        client = self._app_for_bind(
+            http_settings,
+            seeded_engine,
+            fake_clock,
+            sleeper,
+            fake_transport,
+            host="192.0.2.10",
+            port=8001,
+        )
+        with client:
+            assert self._post_mcp(client, "192.0.2.10:8001") == 200
+
+    def test_loopback_still_works_when_bound_elsewhere(
+        self, http_settings, seeded_engine, fake_clock, sleeper, fake_transport
+    ) -> None:
+        client = self._app_for_bind(
+            http_settings,
+            seeded_engine,
+            fake_clock,
+            sleeper,
+            fake_transport,
+            host="192.0.2.10",
+            port=8001,
+        )
+        with client:
+            assert self._post_mcp(client, "127.0.0.1:8001") == 200
+            assert self._post_mcp(client, "localhost:8001") == 200
+
+    def test_an_undeclared_host_is_still_refused(
+        self, http_settings, seeded_engine, fake_clock, sleeper, fake_transport
+    ) -> None:
+        """The fix must not become "allow anything": DNS-rebinding protection stays on."""
+        client = self._app_for_bind(
+            http_settings,
+            seeded_engine,
+            fake_clock,
+            sleeper,
+            fake_transport,
+            host="192.0.2.10",
+            port=8001,
+        )
+        with client:
+            assert self._post_mcp(client, "evil.example.com:8001") == 421
+
+    def test_an_operator_declared_host_is_accepted_for_a_wildcard_bind(
+        self, http_settings, seeded_engine, fake_clock, sleeper, fake_transport
+    ) -> None:
+        """A 0.0.0.0 bind cannot infer its own name, so the reverse-proxy hostname comes from config."""
+        client = self._app_for_bind(
+            http_settings,
+            seeded_engine,
+            fake_clock,
+            sleeper,
+            fake_transport,
+            host="0.0.0.0",
+            port=8000,
+            mcp_allowed_hosts=["mail.example.com"],
+        )
+        with client:
+            assert self._post_mcp(client, "mail.example.com:8000") == 200
+            assert self._post_mcp(client, "other.example.com:8000") == 421
+
+    def test_mcp_allowed_hosts_parses_from_a_comma_separated_env_value(
+        self, monkeypatch: pytest.MonkeyPatch, token_key: str
+    ) -> None:
+        monkeypatch.setenv("GMAIL_AUTOMATOR_TOKEN_ENCRYPTION_KEY", token_key)
+        monkeypatch.setenv(
+            "GMAIL_AUTOMATOR_MCP_ALLOWED_HOSTS", "mail.example.com, chat.example.com"
+        )
+        assert Settings(_env_file=None).mcp_allowed_hosts == [
+            "mail.example.com",
+            "chat.example.com",
+        ]

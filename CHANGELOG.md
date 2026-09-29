@@ -11,6 +11,15 @@ already merged.
 
 ### Fixed
 
+- The MCP endpoint answered `421 Invalid Host header` to every client except one on loopback. The
+  MCP SDK auto-enables DNS-rebinding protection with a hard-coded loopback allowlist whenever it is
+  not told the real bind address, and the gateway was not passing it, so a gateway on a Tailscale
+  address, published on a port, or bound to `0.0.0.0` behind a reverse proxy was unreachable over
+  MCP from anywhere but its own host. The allowlist now derives from the configured bind host plus
+  loopback plus the new `GMAIL_AUTOMATOR_MCP_ALLOWED_HOSTS`, and the protection stays on rather than
+  being switched off. A bare hostname is accepted, so operators need not learn the wildcard syntax.
+  The existing suite missed this because every MCP test used `127.0.0.1`.
+
 - `gmail-automator keys create` printed its "this is the only time the key is shown" warning to stdout
   instead of stderr, so `gmail-automator keys create agent | tail -1` returned the warning text rather than
   the key - the exact pattern the README recommends. The secret now goes to stdout and the warning

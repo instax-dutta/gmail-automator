@@ -85,12 +85,22 @@ class Settings(BaseSettings):
 
     alembic_ini: str | None = None
     mcp_mount_path: str = "/mcp"
+    #: Extra Host header values the MCP endpoint will answer on, for the case where the gateway
+    #: cannot know the name it is reached by: a reverse proxy, a published port, or a bind address
+    #: of 0.0.0.0. The configured bind host and loopback are always allowed without this.
+    #: DNS-rebinding protection stays on, so an unlisted host is refused with 421 rather than
+    #: silently disabling the check.
+    mcp_allowed_hosts: list[str] = []
     host: str = "127.0.0.1"
     port: int = 8000
     request_timeout_seconds: float = 30.0
 
     @field_validator(
-        "oauth_scopes", "attachment_allowed_dirs", "service_account_scopes", mode="before"
+        "oauth_scopes",
+        "attachment_allowed_dirs",
+        "service_account_scopes",
+        "mcp_allowed_hosts",
+        mode="before",
     )
     @classmethod
     def _split_csv(cls, value: object) -> object:
