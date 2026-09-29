@@ -50,6 +50,55 @@ class SendResult:
 
 
 @dataclass(frozen=True)
+class MessageSummary:
+    """One message as a list result: enough to decide whether to read it, not the body."""
+
+    id: str
+    thread_id: str | None
+    subject: str
+    sender: str
+    recipients: str
+    date: str
+    snippet: str
+    label_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MessagePage:
+    messages: tuple[MessageSummary, ...]
+    next_page_token: str | None
+    result_size_estimate: int
+
+
+@dataclass(frozen=True)
+class MessageDetail(MessageSummary):
+    """A message with its body and the threading headers a reply needs."""
+
+    message_id_header: str | None
+    in_reply_to: str | None
+    references: str | None
+    body_text: str | None
+    body_html: str | None
+
+
+@dataclass(frozen=True)
+class LabelInfo:
+    """One label, with the counts that let an agent decide whether it is worth listing."""
+
+    id: str
+    name: str
+    type: str
+    messages_total: int
+    messages_unread: int
+
+
+@dataclass(frozen=True)
+class LabelResult:
+    id: str
+    label_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DraftResult:
     draft_id: str
     message_id: str | None
@@ -102,6 +151,32 @@ class GmailTransport(Protocol):
     def create_draft(
         self, *, email: str, access_token: str, raw_b64url: str, thread_id: str | None = None
     ) -> DraftResult: ...
+
+    def list_messages(
+        self,
+        *,
+        email: str,
+        access_token: str,
+        query: str | None = None,
+        max_results: int = 10,
+        page_token: str | None = None,
+    ) -> MessagePage: ...
+
+    def get_message(
+        self, *, email: str, access_token: str, message_id: str, headers: tuple[str, ...] = ()
+    ) -> dict[str, Any]: ...
+
+    def modify_message(
+        self,
+        *,
+        email: str,
+        access_token: str,
+        message_id: str,
+        add_label_ids: tuple[str, ...] = (),
+        remove_label_ids: tuple[str, ...] = (),
+    ) -> LabelResult: ...
+
+    def list_labels(self, *, email: str, access_token: str) -> tuple[LabelInfo, ...]: ...
 
 
 class GoogleGmailTransport:
@@ -173,6 +248,141 @@ class GoogleGmailTransport:
             message_id=inner.get("id"),
             thread_id=inner.get("threadId") or payload.get("threadId"),
         )
+
+    # ------------------------------------------------------------------ mailbox
+
+    def list_messages(
+        self,
+        *,
+        email: str,
+        access_token: str,
+        query: str | None = None,
+        max_results: int = 10,
+        page_token: str | None = None,
+    ) -> MessagePage:
+        """Search the mailbox with Gmail's own query syntax.
+
+        The query is passed through rather than reimplemented: Gmail's `q` already supports
+        `from:`, `subject:`, `newer_than:`, `has:attachment`, `is:unread`, and boolean
+        operators, and a second dialect to learn would be a worse version of the same thing.
+        """
+        service = self._service(access_token)
+        params: dict[str, Any] = {"userId": email, "maxResults": max(1, min(max_results, 100))}
+        if query:
+            params["q"] = query
+        if page_token:
+            params["pageToken"] = page_token
+        request = service.users().messages().list(**params)
+        request.headers["authorization"] = f"Bearer {access_token}"
+        try:
+            payload = request.execute()
+        except HttpError as exc:
+            raise _translate(exc) from exc
+        return MessagePage(
+            messages=tuple(_summary_from_list_item(item) for item in payload.get("messages") or ()),
+            next_page_token=payload.get("nextPageToken"),
+            result_size_estimate=int(payload.get("resultSizeEstimate") or 0),
+        )
+
+    def get_message(
+        self,
+        *,
+        email: str,
+        access_token: str,
+        message_id: str,
+        headers: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        """Fetch one message. Returns the raw Gmail payload; body parsing belongs to the service.
+
+        Requested headers come back under `payload.headers` alongside Gmail's own envelope, so the
+        caller never has to guess which of the two holds the RFC Message-ID.
+        """
+        service = self._service(access_token)
+        params: dict[str, Any] = {"userId": email, "id": message_id, "format": "full"}
+        if headers:
+            params["metadataHeaders"] = list(headers)
+        request = service.users().messages().get(**params)
+        request.headers["authorization"] = f"Bearer {access_token}"
+        try:
+            return dict(request.execute())
+        except HttpError as exc:
+            raise _translate(exc) from exc
+
+    def list_labels(self, *, email: str, access_token: str) -> tuple[LabelInfo, ...]:
+        """Every label on the account, system and custom.
+
+        An agent asked to file a message needs to know what the person actually named their
+        labels; inventing a label silently creates a new one in Gmail.
+        """
+        service = self._service(access_token)
+        request = service.users().labels().list(userId=email)
+        request.headers["authorization"] = f"Bearer {access_token}"
+        try:
+            payload = request.execute()
+        except HttpError as exc:
+            raise _translate(exc) from exc
+        return tuple(
+            LabelInfo(
+                id=str(item.get("id", "")),
+                name=str(item.get("name", "")),
+                type=str(item.get("type", "")),
+                messages_total=int(item.get("messagesTotal") or 0),
+                messages_unread=int(item.get("messagesUnread") or 0),
+            )
+            for item in payload.get("labels") or ()
+        )
+
+    def modify_message(
+        self,
+        *,
+        email: str,
+        access_token: str,
+        message_id: str,
+        add_label_ids: tuple[str, ...] = (),
+        remove_label_ids: tuple[str, ...] = (),
+    ) -> LabelResult:
+        """Add and remove labels. This is how read/unread, star, archive, and trash are expressed.
+
+        `trash` rather than `delete`: `gmail.modify` does not grant permanent deletion, and a
+        gateway that can silently destroy mail is not a tool an agent should hold.
+        """
+        service = self._service(access_token)
+        body: dict[str, Any] = {}
+        if add_label_ids:
+            body["addLabelIds"] = list(add_label_ids)
+        if remove_label_ids:
+            body["removeLabelIds"] = list(remove_label_ids)
+        if not body:
+            raise ValueError("modify_message needs at least one label to add or remove")
+        request = service.users().messages().modify(userId=email, id=message_id, body=body)
+        request.headers["authorization"] = f"Bearer {access_token}"
+        try:
+            payload = request.execute()
+        except HttpError as exc:
+            raise _translate(exc) from exc
+        return LabelResult(
+            id=str(payload.get("id", message_id)),
+            label_ids=tuple(payload.get("labelIds") or ()),
+        )
+
+
+def _summary_from_list_item(item: dict[str, Any]) -> MessageSummary:
+    """Build a list-row summary from Gmail's `messages.list` item.
+
+    The list endpoint returns only ids, a thread, a snippet, and label ids. Filling the envelope
+    fields with empty strings keeps one shape for the agent instead of two, and a list result that
+    claims to be a summary should not silently invent a sender.
+    """
+    return MessageSummary(
+        id=str(item.get("id", "")),
+        thread_id=item.get("threadId"),
+        subject="",
+        sender="",
+        recipients="",
+        date="",
+        snippet=str(item.get("snippet", "") or ""),
+        label_ids=tuple(item.get("labelIds") or ()),
+    )
 
 
 def _translate(exc: HttpError) -> GoogleApiError:

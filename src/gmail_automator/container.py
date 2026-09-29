@@ -25,6 +25,8 @@ from gmail_automator.tokens import TokenManager
 
 if TYPE_CHECKING:
     from gmail_automator.drafts import DraftService
+    from gmail_automator.mailbox import MailboxService
+    from gmail_automator.replies import ReplyService
 
 
 class _Transport(Protocol):
@@ -64,6 +66,8 @@ class Container:
     history: HistoryService | None = None
     sender: SendService | None = None
     drafts: DraftService | None = None
+    mailbox: MailboxService | None = None
+    replies: ReplyService | None = None
     metrics: Metrics | None = None
     key_limiter: KeyRateLimiter | None = None
     service_account: Any | None = None
@@ -173,10 +177,14 @@ def build_container(
         key_limiter=key_limiter,
         service_account=service_account,
     )
-    # Attached after construction because a few services need the container they live in.
+    # Attached after construction because these services need the container they live in.
     from gmail_automator.drafts import DraftService
+    from gmail_automator.mailbox import MailboxService
+    from gmail_automator.replies import ReplyService
 
     container.drafts = DraftService(container=container)
+    container.mailbox = MailboxService(container=container)
+    container.replies = ReplyService(container=container)
     return container
 
 

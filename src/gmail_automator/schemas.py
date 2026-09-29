@@ -74,7 +74,12 @@ class JobStatusResponse(BaseModel):
     account: str
     recipients: int
     attempts: int
+    #: Gmail's message id, which is what `reply` takes as `message_id`. Not the RFC Message-ID:
+    #: the reply tool reads the headers to get that, because the two are different values.
     message_id: str | None = None
+    #: Gmail's thread id. Passing it back on a send or reply is what makes Gmail thread the
+    #: message itself, independently of the RFC headers.
+    thread_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
     scheduled_at: datetime
@@ -113,6 +118,9 @@ class HistoryItem(BaseModel):
     error_code: str | None
     created_at: datetime
     sent_at: datetime | None
+    #: The ids `reply` needs, so an agent can find a reply target from history alone.
+    message_id: str | None = None
+    thread_id: str | None = None
 
 
 class ErrorBody(BaseModel):

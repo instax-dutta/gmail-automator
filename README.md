@@ -266,6 +266,11 @@ command: `"command": "sh", "args": ["-c", "GMAIL_AUTOMATOR_DATABASE_URL=... gmai
 | `get_send_history`        | Recent sends with status and error codes                            |
 | `get_send_status`         | One job in detail, including the Gmail message id                   |
 | `create_draft`            | Create a draft instead of sending, for human review                 |
+| `list_messages`           | Search the mailbox with Gmail's own query syntax                     |
+| `read_message`            | Read one message: decoded headers, body, threading headers          |
+| `reply`                   | Reply so it threads in Gmail, or leave a draft reply for review     |
+| `modify_message`          | Read/unread, star, archive, trash, and custom labels                |
+| `list_labels`             | Every label with its counts, so nothing gets filed under a guess    |
 
 Tools return structured results. A refused operation comes back as a readable error result whose
 text begins with the error code, e.g. `quota_exceeded: daily message soft limit reached...`, so a
@@ -331,8 +336,9 @@ Every limit is configuration, not a constant. Gmail changes its published number
 
 ## When not to use this
 
-- **You need to read mail.** gmail-automator requests `gmail.send` and nothing else. It will not become a
-  mail client, and it deliberately cannot read your inbox.
+- **You only want to send.** That is the default and the recommended setup: connect with
+  `gmail.send` and every read, reply, and label tool refuses with `scope_missing`. Widen
+  `GMAIL_AUTOMATOR_OAUTH_SCOPES` only if you actually want an agent inside your mailbox.
 - **You want someone else's infrastructure.** There is no hosted version. That is the trade: the
   credential never leaves your host.
 - **You are sending bulk or unsolicited mail.** gmail-automator stays well inside Gmail's limits as a
@@ -428,8 +434,12 @@ without binding a port.
 
 - OAuth tokens are AES-256-GCM encrypted at rest, bound to the account address as AAD. They are
   never returned by the API and never written to a log.
-- Scopes are least-privilege: `gmail.send` plus `openid` and `email`. The gateway never asks for
-  mailbox read access.
+- Scopes are least-privilege and yours to widen. The default is `gmail.send` plus `openid` and
+  `email`, and nothing more: an account connected that way cannot be read, and the read, reply, and
+  label tools refuse with `scope_missing` rather than degrading. Reading, replying, and organising
+  require you to add `gmail.modify` (or `gmail.readonly` for reading alone) to
+  `GMAIL_AUTOMATOR_OAUTH_SCOPES` and reconnect. `gmail.modify` also grants reading message bodies,
+  so widening it is a real change in what the gateway can reach, not a formality.
 - Email bodies are held only while a job is in flight and are wiped on a terminal state.
 - API keys are stored as a prefix plus a SHA-256 hash and compared with `hmac.compare_digest`.
 - The log pipeline redacts secret-looking keys recursively, and the container runs as uid 10001

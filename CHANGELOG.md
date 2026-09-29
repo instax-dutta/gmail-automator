@@ -9,7 +9,29 @@ already merged.
 
 ## [Unreleased]
 
+### Added
+
+- Mailbox read, reply, and organisation, so an agent can manage a mailbox rather than only fire
+  off messages. Six new tools on both surfaces: `list_messages` (Gmail search syntax passed
+  through), `read_message` (decoded headers, `text/plain` preferred over HTML, RFC 2047 unpacked),
+  `reply`, `draft` reply, `modify_message` (read/unread, star, archive, trash, custom labels), and
+  `list_labels`. REST parity: `/v1/mailbox/*` and `/v1/reply`.
+- Replying gets the threading right: the recipient, subject, `In-Reply-To`, the whole `References`
+  chain, and Gmail's `threadId` are all derived from the original, so a caller supplies only a
+  body. A reply that merely *sent* while threading wrongly would have been invisible, so the
+  headers are asserted directly.
+- `JobStatusResponse` and history rows now carry `message_id` and `thread_id`, so an agent can find
+  a reply target without a second lookup.
+- Read and organise are gated on scope the operator grants deliberately. The default stays
+  `gmail.send`; reading needs `gmail.readonly` or `gmail.modify`, and labels need `gmail.modify`.
+  Every tool refuses with `scope_missing` before any API call rather than degrading.
+
 ### Fixed
+
+- A folded `References` header could inject a line break into the headers of the message being
+  sent. Python's email parser hands back the raw folded value, so the CRLF was carried straight
+  into `In-Reply-To`/`References`. Header values are now unfolded on the way in.
+
 
 - `tests/unit/test_no_hardcoded_credentials.py` fails the build on a credential-shaped literal in
   shipped code, or on a literal in this project's own key format in a test. The REST suite had been

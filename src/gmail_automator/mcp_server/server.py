@@ -100,6 +100,57 @@ class DisconnectToolResult(BaseModel):
     status: str
 
 
+class MessageSummaryModel(BaseModel):
+    id: str
+    thread_id: str | None = None
+    subject: str = ""
+    sender: str = ""
+    recipients: str = ""
+    date: str = ""
+    snippet: str = ""
+    label_ids: list[str] = Field(default_factory=list)
+
+
+class MessagePageModel(BaseModel):
+    messages: list[MessageSummaryModel]
+    next_page_token: str | None = None
+    result_size_estimate: int = 0
+
+
+class MessageDetailModel(BaseModel):
+    id: str
+    thread_id: str | None = None
+    subject: str = ""
+    sender: str = ""
+    recipients: str = ""
+    date: str = ""
+    snippet: str = ""
+    label_ids: list[str] = Field(default_factory=list)
+    message_id_header: str | None = None
+    in_reply_to: str | None = None
+    references: str | None = None
+    body_text: str | None = None
+    body_html: str | None = None
+
+
+class LabelResultModel(BaseModel):
+    message_id: str
+    label_ids: list[str]
+
+
+class ReplyToolResult(BaseModel):
+    kind: str
+    account: str
+    replied_to: str
+    thread_id: str | None = None
+    job_id: int | None = None
+    status: str | None = None
+    message_id: str | None = None
+    draft_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 class DraftToolResult(BaseModel):
     draft_id: str
     message_id: str | None
@@ -386,6 +437,176 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
             message_id=result.message_id,
             thread_id=result.thread_id,
             account=resolved.email,
+        )
+
+    # ---------------------------------------------------------------- mailbox
+
+    @mcp.tool(
+        description=(
+            "Search the mailbox. `query` uses Gmail's own search syntax and is passed through "
+            "unchanged, so `from:`, `subject:`, `newer_than:7d`, `has:attachment`, `is:unread`, "
+            "and AND/OR work as they do in the Gmail search box. Results carry a snippet, not the "
+            "body: use read_message for that. Returns next_page_token when more exist, so pass it "
+            "back to continue. PRECONDITION: the account needs a read scope "
+            "(gmail.modify or gmail.readonly); a send-only account gets scope_missing."
+        ),
+        annotations=READ_ONLY,
+    )
+    async def list_messages(
+        query: str | None = None,
+        max_results: int = 10,
+        page_token: str | None = None,
+        account: str | None = None,
+    ) -> MessagePageModel:
+        page = await _call(
+            require(container(), "mailbox").list_messages,
+            account_email=account,
+            query=query,
+            max_results=max(1, min(max_results, 100)),
+            page_token=page_token,
+        )
+        return MessagePageModel(
+            messages=[MessageSummaryModel(**vars(m)) for m in page.messages],
+            next_page_token=page.next_page_token,
+            result_size_estimate=page.result_size_estimate,
+        )
+
+    @mcp.tool(
+        description=(
+            "Read one message in full: decoded headers, body_text (preferred), body_html, and the "
+            "threading headers. Message ids come from list_messages or get_send_status. Bodies are "
+            "base64url in Gmail's API and decoded here, and RFC 2047 headers are decoded, so the "
+            "result is readable rather than raw. PRECONDITION: needs a read scope."
+        ),
+        annotations=READ_ONLY,
+    )
+    async def read_message(
+        message_id: str,
+        account: str | None = None,
+    ) -> MessageDetailModel:
+        detail = await _call(
+            require(container(), "mailbox").get_message,
+            message_id=message_id,
+            account_email=account,
+        )
+        return MessageDetailModel(
+            id=detail.id,
+            thread_id=detail.thread_id,
+            subject=detail.subject,
+            sender=detail.sender,
+            recipients=detail.recipients,
+            date=detail.date,
+            snippet=detail.snippet,
+            label_ids=list(detail.label_ids),
+            message_id_header=detail.message_id_header,
+            in_reply_to=detail.in_reply_to,
+            references=detail.references,
+            body_text=detail.body_text,
+            body_html=detail.body_html,
+        )
+
+    @mcp.tool(
+        description=(
+            "List every label on the account, system and custom, with total and unread counts. "
+            "Use this before modify_message so a message is filed under a label the person "
+            "actually created, rather than one invented on the spot. PRECONDITION: needs "
+            "gmail.modify."
+        ),
+        annotations=READ_ONLY,
+    )
+    async def list_labels(account: str | None = None) -> dict[str, Any]:
+        labels = await _call(require(container(), "mailbox").list_labels, account_email=account)
+        return {
+            "labels": [
+                {
+                    "id": label.id,
+                    "name": label.name,
+                    "type": label.type,
+                    "messages_total": label.messages_total,
+                    "messages_unread": label.messages_unread,
+                }
+                for label in labels
+            ]
+        }
+
+    @mcp.tool(
+        description=(
+            "Organise a message by changing its labels. `states` takes friendly names rather than "
+            "Gmail label ids: read, unread, starred, unstarred, archived, in_inbox, trashed, "
+            "not_trashed, important, not_important, not_spam. `add_labels`/`remove_labels` set "
+            "custom labels by name. Archiving is removing INBOX; trashing is reversible, and there "
+            "is deliberately no permanent delete. PRECONDITION: needs gmail.modify."
+        ),
+        annotations=MUTATING,
+    )
+    async def modify_message(
+        message_id: str,
+        states: list[str] | None = None,
+        add_labels: list[str] | None = None,
+        remove_labels: list[str] | None = None,
+        account: str | None = None,
+    ) -> LabelResultModel:
+        result = await _call(
+            require(container(), "mailbox").modify_message,
+            message_id=message_id,
+            states=tuple(states or ()),
+            add_labels=tuple(add_labels or ()),
+            remove_labels=tuple(remove_labels or ()),
+            account_email=account,
+        )
+        return LabelResultModel(message_id=result.id, label_ids=list(result.label_ids))
+
+    @mcp.tool(
+        description=(
+            "Reply to a message so the reply threads correctly in Gmail. Identify the target with "
+            "exactly one of: `job_id` for a message this gateway sent (from get_send_status or "
+            "get_send_history), or `message_id` for any message the account can read (from "
+            "list_messages). The recipient, subject, In-Reply-To, References, and Gmail thread id "
+            "are all derived from the original, so the caller supplies only the body; `to` "
+            "overrides the recipient. Set `draft=true` to leave the reply in Gmail for a human to "
+            "review instead of sending it. PRECONDITION: reading the original needs a read scope; "
+            "drafting also needs a compose scope."
+        ),
+        annotations=MUTATING,
+    )
+    async def reply(
+        body: str,
+        job_id: int | None = None,
+        message_id: str | None = None,
+        to: list[str] | None = None,
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+        body_html: str | None = None,
+        subject: str | None = None,
+        draft: bool = False,
+        wait: bool = True,
+        account: str | None = None,
+    ) -> ReplyToolResult:
+        outcome = await _call(
+            require(container(), "replies").reply,
+            account_email=account,
+            job_id=job_id,
+            message_id=message_id,
+            to=tuple(to) if to else None,
+            cc=tuple(cc) if cc else None,
+            bcc=tuple(bcc) if bcc else None,
+            body=body,
+            body_html=body_html,
+            subject=subject,
+            draft=draft,
+            wait=wait,
+        )
+        return ReplyToolResult(
+            kind=outcome.kind,
+            account=outcome.account,
+            replied_to=outcome.replied_to,
+            thread_id=outcome.thread_id,
+            job_id=outcome.job_id,
+            status=outcome.status,
+            message_id=outcome.message_id,
+            draft_id=outcome.draft_id,
+            error_code=outcome.error_code,
+            error_message=outcome.error_message,
         )
 
     # ---------------------------------------------------------------- history

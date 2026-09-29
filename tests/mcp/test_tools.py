@@ -79,6 +79,11 @@ async def test_every_expected_tool_is_registered(server) -> None:
     assert names == {
         "send_email",
         "create_draft",
+        "list_messages",
+        "read_message",
+        "list_labels",
+        "modify_message",
+        "reply",
         "send_batch",
         "get_quota_status",
         "list_accounts",

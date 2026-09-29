@@ -264,6 +264,7 @@ def _mount_routes(app: FastAPI) -> None:
         routes_drafts,
         routes_health,
         routes_jobs,
+        routes_mailbox,
         routes_oauth,
         routes_quota,
         routes_send,
@@ -275,6 +276,7 @@ def _mount_routes(app: FastAPI) -> None:
     app.include_router(routes_quota.router)
     app.include_router(routes_send.router)
     app.include_router(routes_drafts.router)
+    app.include_router(routes_mailbox.router)
     app.include_router(routes_jobs.router)
 
 

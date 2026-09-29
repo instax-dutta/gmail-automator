@@ -53,6 +53,8 @@ class HistoryService:
                 error_code=job.error_code,
                 created_at=job.created_at,
                 sent_at=job.sent_at,
+                message_id=job.gmail_message_id,
+                thread_id=job.gmail_thread_id,
             )
             for job, email in rows
         ]
@@ -72,6 +74,7 @@ class HistoryService:
                 recipients=job.recipients,
                 attempts=job.attempt_count,
                 message_id=job.gmail_message_id,
+                thread_id=job.gmail_thread_id,
                 error_code=job.error_code,
                 error_message=job.error_message,
                 scheduled_at=job.scheduled_at,

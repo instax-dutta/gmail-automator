@@ -9,7 +9,12 @@ DEFAULT_ACCOUNT = "sender@example.com"
 
 
 def fake_gmail_app() -> FastAPI:
-    """In-process fake for: OAuth token exchange/refresh, OIDC userinfo, Gmail send/drafts."""
+    """In-process fake: OAuth token exchange/refresh, OIDC userinfo, Gmail send/drafts, and the
+    mailbox read/organise surface (messages.list, messages.get, messages.modify, labels.list).
+
+    The mailbox endpoints answer from `app.state.mailbox`, so a test can seed a message with a
+    real MIME body and threading headers and assert that a reply picks them up.
+    """
     app = FastAPI()
     app.state.requests = []
     app.state.behavior = {}
@@ -105,4 +110,137 @@ def fake_gmail_app() -> FastAPI:
         app.state.requests.append({"path": "draft", "user_id": user_id, "body": body})
         return JSONResponse({"id": "draft-1", "message": {"id": "draft-msg-1"}})
 
+    # ------------------------------------------------------------------ mailbox
+
+    def _mailbox() -> dict[str, Any]:
+        return dict(app.state.mailbox)
+
+    @app.get("/gmail/v1/users/{user_id}/messages")
+    async def list_messages(user_id: str, request: Request) -> JSONResponse:
+        query = request.query_params.get("q")
+        max_results = int(request.query_params.get("maxResults", 10))
+        page_token = request.query_params.get("pageToken")
+        app.state.requests.append(
+            {
+                "path": "messages.list",
+                "user_id": user_id,
+                "q": query,
+                "max_results": max_results,
+                "page_token": page_token,
+            }
+        )
+        store = _mailbox()
+        messages = list(store.get("messages", []))
+        if query:
+            messages = [m for m in messages if _matches(m, query)]
+        start = 0
+        if page_token:
+            try:
+                start = int(page_token)
+            except ValueError:
+                start = 0
+        window = messages[start : start + max_results]
+        next_start = start + max_results
+        return JSONResponse(
+            {
+                "messages": [
+                    {
+                        "id": m["id"],
+                        "threadId": m.get("threadId"),
+                        "snippet": m.get("snippet", ""),
+                        "labelIds": m.get("labelIds", []),
+                    }
+                    for m in window
+                ],
+                "nextPageToken": str(next_start) if next_start < len(messages) else None,
+                "resultSizeEstimate": len(messages),
+            }
+        )
+
+    @app.get("/gmail/v1/users/{user_id}/messages/{message_id}")
+    async def get_message(user_id: str, message_id: str) -> JSONResponse:
+        app.state.requests.append(
+            {"path": "messages.get", "user_id": user_id, "message_id": message_id}
+        )
+        store = _mailbox()
+        for message in store.get("messages", []):
+            if message["id"] == message_id:
+                return JSONResponse(
+                    {
+                        "id": message["id"],
+                        "threadId": message.get("threadId"),
+                        "labelIds": message.get("labelIds", []),
+                        "payload": {
+                            "headers": [
+                                {"name": key, "value": value}
+                                for key, value in (message.get("headers") or {}).items()
+                            ],
+                            "mimeType": message.get("mimeType", "text/plain"),
+                            "body": {"data": message.get("raw_b64", "")},
+                            "snippet": message.get("snippet", ""),
+                        },
+                    }
+                )
+        return JSONResponse(
+            {"error": {"code": 404, "message": "Not Found", "errors": [{"reason": "notFound"}]}},
+            status_code=404,
+        )
+
+    @app.post("/gmail/v1/users/{user_id}/messages/{message_id}/modify")
+    async def modify_message(user_id: str, message_id: str, request: Request) -> JSONResponse:
+        body = await request.json()
+        app.state.requests.append(
+            {
+                "path": "messages.modify",
+                "user_id": user_id,
+                "message_id": message_id,
+                "body": body,
+            }
+        )
+        store = _mailbox()
+        for message in store.get("messages", []):
+            if message["id"] == message_id:
+                labels = set(message.get("labelIds", []))
+                labels.update(body.get("addLabelIds") or [])
+                labels.difference_update(body.get("removeLabelIds") or [])
+                message["labelIds"] = sorted(labels)
+                return JSONResponse({"id": message_id, "labelIds": sorted(labels)})
+        return JSONResponse(
+            {"error": {"code": 404, "message": "Not Found", "errors": [{"reason": "notFound"}]}},
+            status_code=404,
+        )
+
+    @app.get("/gmail/v1/users/{user_id}/labels")
+    async def list_labels(user_id: str) -> JSONResponse:
+        app.state.requests.append({"path": "labels.list", "user_id": user_id})
+        return JSONResponse({"labels": list(_mailbox().get("labels", []))})
+
+    app.state.mailbox = {}
     return app
+
+
+def _matches(message: dict[str, Any], query: str) -> bool:
+    """Support the subset of Gmail search syntax the tests use.
+
+    A full parser is not the point of a fake; supporting `from:`, `subject:`, `is:`, and a bare
+    term is enough to prove the query reaches Gmail rather than being mangled in transit.
+    """
+    haystack = " ".join(
+        [
+            str(message.get("headers", {}).get("From", "")),
+            str(message.get("headers", {}).get("Subject", "")),
+            str(message.get("snippet", "")),
+            " ".join(message.get("labelIds", [])),
+        ]
+    ).lower()
+    for token in query.split():
+        field, _, term = token.partition(":")
+        if term and field.lower() in ("from", "subject", "is", "has", "to"):
+            if field.lower() == "is":
+                if term.lower() not in {label.lower() for label in message.get("labelIds", [])}:
+                    return False
+            elif term.lower() not in haystack:
+                return False
+        elif term.lower() not in haystack:
+            return False
+    return True
