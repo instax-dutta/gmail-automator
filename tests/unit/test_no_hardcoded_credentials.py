@@ -60,9 +60,14 @@ SHIPPED_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
 }
 
-#: Test code: only this project's own key format, because only it is pasteable into a real deploy.
+#: Test code: any literal in this project's own key format, whatever the prefix. The parser accepts
+#: any `fmg_<prefix>_<secret>` with non-empty parts, so a test literal is a working credential - and
+#: a prefix that is not eight hex characters is no safer than one that is.
 TEST_PATTERNS: dict[str, re.Pattern[str]] = {
-    "a literal gateway API key": re.compile(r"fmg_[0-9a-f]{8}_[A-Za-z0-9_-]{43}"),
+    # The secret is matched loosely on purpose: the parser accepts any non-empty secret, so even a
+    # short placeholder is a value an operator could copy into FMAIL_AUTOMATOR_BOOTSTRAP_ADMIN_KEY
+    # and have it authenticate. Length is not what makes it dangerous.
+    "a literal gateway API key": re.compile(r"fmg_[A-Za-z0-9]+_[A-Za-z0-9_-]{8,}"),
     "a literal token encryption key": re.compile(
         r"(?i:TOKEN_ENCRYPTION_KEY[\"']?\s*[:=]\s*[\"'][A-Za-z0-9+/=_-]{40,}[\"'])"
     ),

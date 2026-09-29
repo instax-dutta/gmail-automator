@@ -113,10 +113,15 @@ def test_a_send_only_account_is_refused_the_same_way_over_http(
 
 def test_the_mailbox_routes_require_the_api_key(http_settings, seeded_engine, sleeper, fake_clock):
     """The OAuth callback is the only unauthenticated /v1 route; the mailbox must not be one."""
+    import secrets
+
     from pydantic import SecretStr
 
+    # Generated rather than written down: a key literal in a public test suite is a value someone
+    # could paste into FMAIL_AUTOMATOR_BOOTSTRAP_ADMIN_KEY and have it authenticate.
+    admin_key = f"fmg_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}"
     tuned = http_settings.model_copy(
-        update={"auth_mode": "api_key", "bootstrap_admin_key": SecretStr("fmg_REDACTED_IN_HISTORY")}
+        update={"auth_mode": "api_key", "bootstrap_admin_key": SecretStr(admin_key)}
     )
     transport = FakeGmailTransport()
     container = build_container(

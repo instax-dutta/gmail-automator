@@ -1,3 +1,5 @@
+import secrets
+
 import pytest
 
 from gmail_automator.api_keys import (
@@ -136,10 +138,12 @@ def test_a_wrong_secret_is_rejected(container) -> None:
 
 
 def test_an_unknown_prefix_is_rejected(container) -> None:
+    """Built at runtime, not written down: a key literal here would be a published credential."""
     from gmail_automator.api_keys import ApiKeyService
 
+    unknown = f"fmg_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}"
     with pytest.raises(Unauthorized):
-        ApiKeyService(container=container).verify("fmg_REDACTED_IN_HISTORY")
+        ApiKeyService(container=container).verify(unknown)
 
 
 def test_a_malformed_key_is_rejected(container) -> None:

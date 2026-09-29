@@ -88,17 +88,19 @@ def test_bootstrap_admin_key_is_accepted(bootstrap_client) -> None:
     assert response.status_code == 200
 
 
-def test_a_stale_constant_from_the_test_suite_is_not_a_key(bootstrap_client) -> None:
-    """The suite used to hardcode `fmg_REDACTED_IN_HISTORY`, which parsed as a real key.
+def test_a_well_formed_key_that_was_never_issued_is_refused(bootstrap_client) -> None:
+    """A structurally valid key that the gateway never issued must not authenticate.
 
-    A fixed literal in a public test suite is a credential an operator could paste into a
-    production env file. Keys are generated per run now, and this pins that the old value is dead.
+    The suite used to hardcode one such literal, and it is worth keeping this test without keeping
+    the literal: a valid-format key published in a public test suite is a credential an operator
+    could paste into a production env file. This one is generated at runtime instead, so the
+    property is pinned and nothing usable is committed.
     """
+    import secrets
+
     test_client, _bootstrap_key = bootstrap_client
-    response = test_client.get(
-        "/v1/accounts",
-        headers={"authorization": "Bearer fmg_REDACTED_IN_HISTORY"},
-    )
+    unissued = f"fmg_{secrets.token_hex(4)}_{secrets.token_urlsafe(32)}"
+    response = test_client.get("/v1/accounts", headers={"authorization": f"Bearer {unissued}"})
     assert response.status_code == 401
 
 

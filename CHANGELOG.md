@@ -39,12 +39,13 @@ already merged.
 
 
 - `tests/unit/test_no_hardcoded_credentials.py` fails the build on a credential-shaped literal in
-  shipped code, or on a literal in this project's own key format in a test. The REST suite had been
-  hard-coding `fmg_REDACTED_IN_HISTORY`, which the parser accepts as a working key: a valid
-  credential published in a public repository, and one an operator could paste into a production
-  env file. Test keys are now generated per run, and a test pins that the old literal is dead. The
-  MCP allowlist test also used a real deployment's address as its fixture; it now uses RFC 5737
-  TEST-NET-1, since a test has no business publishing someone's infrastructure.
+  shipped code, or on any literal in this project's own key format anywhere in the suite. The REST
+  suite had been hard-coding one, in a form the parser accepts as a working key: a valid credential
+  published in a public repository, and one an operator could paste into a production env file. Test
+  keys are now generated per run, and the test that pins the property generates its key too, so
+  nothing usable is committed. The MCP allowlist test also used a real deployment's address as its
+  fixture; it now uses RFC 5737 TEST-NET-1, since a test has no business publishing someone's
+  infrastructure.
 - MCP tool descriptions now state their preconditions, including the exact OAuth scope strings an
   account must hold. `create_draft` previously said only "needs a compose scope", which a model
   could not check against the scopes `list_accounts` reports, so a draft against a send-only account
