@@ -206,3 +206,84 @@ def test_send_result_is_frozen() -> None:
 def test_module_does_not_import_datetime_naive_helpers() -> None:
     # transport must never invent a clock: the worker owns `now`
     assert datetime.now(UTC) is not None
+
+
+def _seed(**message: object) -> None:
+    """Put a message in the fake Gmail mailbox, as the API would hold it.
+
+    The recorded-request log is cleared here as well as by the autouse fixture: the fixture runs
+    before the test body, and these tests assert on the last request rather than the first, so a
+    record left by a sibling test would otherwise be found instead.
+    """
+    import base64
+
+    FAKE_APP.state.requests.clear()
+    raw = (
+        f"Message-ID: <{message.get('id')}@example.com>\r\n"
+        f"From: {message.get('sender', 'Boss <boss@x.co>')}\r\n"
+        "To: me@example.com\r\n"
+        f"Subject: {message.get('subject', 'Quarterly numbers')}\r\n"
+        "Date: Tue, 29 Sep 2026 12:00:00 +0000\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n\r\nbody\r\n"
+    ).encode()
+    FAKE_APP.state.mailbox = {
+        "messages": [
+            {
+                "id": message.get("id", "m1"),
+                "threadId": "t1",
+                "snippet": "a snippet",
+                "labelIds": ["INBOX"],
+                "headers": {
+                    "Message-ID": f"<{message.get('id')}@example.com>",
+                    "From": message.get("sender", "Boss <boss@x.co>"),
+                    "To": "me@example.com",
+                    "Subject": message.get("subject", "Quarterly numbers"),
+                    "Date": "Tue, 29 Sep 2026 12:00:00 +0000",
+                },
+                "raw_b64": base64.urlsafe_b64encode(raw).decode().rstrip("="),
+            }
+        ]
+    }
+
+
+def test_list_messages_hydrates_the_envelope_from_the_list_row() -> None:
+    """`messages.list` returns ids only. A row with no subject is not something an agent can use."""
+    _seed()
+    page = _transport().list_messages(
+        email="me@example.com", access_token="tok", query="in:inbox", max_results=5
+    )
+    assert [m.id for m in page.messages] == ["m1"]
+    row = page.messages[0]
+    assert row.subject == "Quarterly numbers"
+    assert row.sender == "Boss <boss@x.co>"
+    assert row.recipients == "me@example.com"
+    assert row.snippet == "a snippet"
+    assert row.thread_id == "t1"
+    assert row.label_ids == ("INBOX",)
+
+
+def test_list_messages_keeps_the_row_when_its_headers_cannot_be_fetched() -> None:
+    """One unreadable message must not make an otherwise good search unusable."""
+    _seed()
+    FAKE_APP.state.mailbox["messages"].append({"id": "gone", "threadId": "t2", "labelIds": []})
+    page = _transport().list_messages(email="me@example.com", access_token="tok", max_results=5)
+    by_id = {m.id: m for m in page.messages}
+    assert "gone" in by_id
+    assert by_id["gone"].subject == ""
+    # The readable row still came back fully populated.
+    assert by_id["m1"].subject == "Quarterly numbers"
+
+
+def test_list_messages_passes_the_query_and_paging_through() -> None:
+    _seed()
+    _transport().list_messages(
+        email="me@example.com",
+        access_token="tok",
+        query="from:boss@x.co newer_than:7d",
+        max_results=3,
+        page_token="p2",
+    )
+    listed = [r for r in FAKE_APP.state.requests if r["path"] == "messages.list"][-1]
+    assert listed["q"] == "from:boss@x.co newer_than:7d"
+    assert listed["max_results"] == 3
+    assert listed["page_token"] == "p2"

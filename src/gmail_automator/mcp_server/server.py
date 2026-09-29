@@ -445,9 +445,11 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
         description=(
             "Search the mailbox. `query` uses Gmail's own search syntax and is passed through "
             "unchanged, so `from:`, `subject:`, `newer_than:7d`, `has:attachment`, `is:unread`, "
-            "and AND/OR work as they do in the Gmail search box. Results carry a snippet, not the "
-            "body: use read_message for that. Returns next_page_token when more exist, so pass it "
-            "back to continue. PRECONDITION: the account needs a read scope "
+            "and AND/OR work as they do in the Gmail search box. Each row carries subject, sender, "
+            "date, and a snippet but never the body: use read_message for that. Returns "
+            "next_page_token when more exist, so pass it back to continue. Each row costs one "
+            "extra metadata call, which is why max_results is capped at 100. PRECONDITION: the "
+            "account needs a read scope "
             "(gmail.modify or gmail.readonly); a send-only account gets scope_missing."
         ),
         annotations=READ_ONLY,

@@ -28,6 +28,11 @@ already merged.
 
 ### Fixed
 
+- `list_messages` returned rows with no subject, sender, or date, because Gmail's `messages.list`
+  returns ids only. A list an agent cannot act on without fetching every message is a list that has
+  failed at its job, so each row is now hydrated with a metadata call. A row whose headers cannot be
+  fetched keeps its id and an empty envelope rather than failing the whole page.
+
 - A folded `References` header could inject a line break into the headers of the message being
   sent. Python's email parser hands back the raw folded value, so the CRLF was carried straight
   into `In-Reply-To`/`References`. Header values are now unfolded on the way in.

@@ -278,8 +278,46 @@ class GoogleGmailTransport:
             payload = request.execute()
         except HttpError as exc:
             raise _translate(exc) from exc
+
+        def hydrate(item: dict[str, Any]) -> MessageSummary:
+            """Fill in the envelope for a list row, because `messages.list` does not return one.
+
+            A list of ids with no subject and no sender is not something an agent can act on: it
+            would have to fetch every message to learn which one it wanted. Gmail has no batch
+            metadata endpoint, so this costs one `messages.get` per row, bounded by `max_results`
+            (capped at 100 for exactly this reason). A row whose fetch fails keeps its id and an
+            empty envelope rather than failing the page, so one unreadable message cannot make an
+            otherwise good search useless.
+            """
+            summary = _summary_from_list_item(item)
+            if not summary.id:
+                return summary
+            try:
+                detail = self.get_message(
+                    email=email,
+                    access_token=access_token,
+                    message_id=summary.id,
+                    headers=_ENVELOPE_HEADERS,
+                )
+            except GoogleApiError:
+                return summary
+            headers = {
+                str(entry.get("name", "")).lower(): entry.get("value")
+                for entry in (detail.get("payload") or {}).get("headers") or ()
+            }
+            return MessageSummary(
+                id=summary.id,
+                thread_id=summary.thread_id,
+                subject=str(headers.get("subject") or ""),
+                sender=str(headers.get("from") or ""),
+                recipients=str(headers.get("to") or ""),
+                date=str(headers.get("date") or ""),
+                snippet=summary.snippet or str((detail.get("payload") or {}).get("snippet") or ""),
+                label_ids=summary.label_ids,
+            )
+
         return MessagePage(
-            messages=tuple(_summary_from_list_item(item) for item in payload.get("messages") or ()),
+            messages=tuple(hydrate(item) for item in payload.get("messages") or ()),
             next_page_token=payload.get("nextPageToken"),
             result_size_estimate=int(payload.get("resultSizeEstimate") or 0),
         )
@@ -366,12 +404,16 @@ class GoogleGmailTransport:
         )
 
 
+#: What a list row needs to be useful: who and what, not the body.
+_ENVELOPE_HEADERS: tuple[str, ...] = ("Subject", "From", "To", "Date")
+
+
 def _summary_from_list_item(item: dict[str, Any]) -> MessageSummary:
     """Build a list-row summary from Gmail's `messages.list` item.
 
-    The list endpoint returns only ids, a thread, a snippet, and label ids. Filling the envelope
-    fields with empty strings keeps one shape for the agent instead of two, and a list result that
-    claims to be a summary should not silently invent a sender.
+    The list endpoint returns only ids, a thread, a snippet, and label ids. Empty strings keep one
+    shape for the agent instead of two, and a list row should never invent a sender it was not
+    told. `list_messages` fills these in with a follow-up metadata call per row.
     """
     return MessageSummary(
         id=str(item.get("id", "")),
