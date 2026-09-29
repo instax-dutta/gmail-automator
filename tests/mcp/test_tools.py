@@ -400,3 +400,54 @@ async def test_send_email_delivers_end_to_end_through_the_worker(
     assert worker.run_once().action == "sent"
     assert mcp_container.queue.get(job_id).gmail_message_id == "msg-1"
     assert connected == DEFAULT_ACCOUNT  # the fake provider is the only account in play
+
+
+@pytest.mark.anyio
+async def test_tool_descriptions_state_their_preconditions(server) -> None:
+    """An agent reads the description or it does not; the scope strings must be in it.
+
+    A `create_draft` refusal for a missing compose scope cost a wasted turn in a live deployment
+    because the description only said "needs a compose scope" without naming it, so a model could
+    not check the precondition against what `list_accounts` reports. The scope text is interpolated
+    from the same constants the enforcement uses, so it cannot drift.
+    """
+    from gmail_automator.drafts import COMPOSE_SCOPES, SEND_SCOPE
+
+    async with Client(server, raise_exceptions=True) as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+
+    for name in ("send_email", "send_batch", "create_draft", "list_accounts"):
+        assert tools[name].description, f"{name} has no description"
+
+    # A send names the exact scope it needs.
+    for name in ("send_email", "send_batch", "list_accounts"):
+        assert SEND_SCOPE in tools[name].description, f"{name} does not name {SEND_SCOPE}"
+
+    # A draft names every scope that satisfies it, not a vague "a compose scope".
+    draft = tools["create_draft"].description
+    for scope in COMPOSE_SCOPES:
+        assert scope in draft, f"create_draft does not name {scope}"
+    assert "PRECONDITION" in draft
+
+    # The pre-flight tool is discoverable from the tool that needs it.
+    assert "list_accounts" in tools["create_draft"].description
+    assert "get_quota_status" in tools["send_batch"].description
+
+    # The budget does not have to be fetched separately.
+    assert "messages_remaining" in tools["send_email"].description
+
+    # Nothing hard-codes a limit that configuration can change.
+    for name, tool in tools.items():
+        assert "425" not in tool.description, f"{name} hard-codes a soft limit"
+        assert "500" not in tool.description, f"{name} hard-codes a daily cap"
+
+
+@pytest.mark.anyio
+async def test_every_tool_description_is_present_and_useful(server) -> None:
+    """A tool with an empty description is invisible guidance for the model."""
+    async with Client(server, raise_exceptions=True) as client:
+        tools = (await client.list_tools()).tools
+    for tool in tools:
+        description = (tool.description or "").strip()
+        assert len(description) > 30, f"{tool.name} has a useless description: {description!r}"
+        assert "{" not in description, f"{tool.name} has an unformatted placeholder"

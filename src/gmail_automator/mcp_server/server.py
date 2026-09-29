@@ -23,6 +23,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field, ValidationError
 
 from gmail_automator.container import Container, require
+from gmail_automator.drafts import COMPOSE_SCOPES, SEND_SCOPE
 from gmail_automator.errors import GatewayError
 from gmail_automator.gmail.mime import OutgoingMessage
 from gmail_automator.schemas import AccountSummary, to_outgoing_message
@@ -152,9 +153,12 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
 
     @mcp.tool(
         description=(
-            "Send an email from a connected Gmail account. Honours the account's rolling 24 hour "
-            "quota and pacing; returns a Gmail message id when it has been delivered, or a job id "
-            "when it is still queued."
+            "Send an email from a connected Gmail account. PRECONDITION: an account must already "
+            f"be connected with {SEND_SCOPE}. Honours the account's rolling 24 hour quota and "
+            "pacing, and a send that would exceed them is refused before Google is contacted. "
+            "wait=true returns a Gmail message id once delivered; wait=false returns a job id "
+            "immediately. The result always carries messages_remaining, so there is no need to "
+            "ask for the budget separately."
         ),
         annotations=MUTATING,
     )
@@ -221,8 +225,11 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
     @mcp.tool(
         description=(
             "Send several emails from one account. The whole batch is validated and quota-checked "
-            "before anything is queued, so a refusal leaves the queue untouched. Pacing is applied "
-            "per account, so the messages go out `send_interval_seconds` apart."
+            "before anything is queued, so a refusal leaves the queue untouched and no partial "
+            "send happens. Pacing is applied per account, so the messages go out "
+            "`send_interval_seconds` apart rather than all at once. PRECONDITION: an account "
+            f"connected with {SEND_SCOPE}. Call get_quota_status first for a large batch; a batch "
+            "larger than the remaining budget is refused whole."
         ),
         annotations=MUTATING,
     )
@@ -291,7 +298,11 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
     # --------------------------------------------------------------- accounts
 
     @mcp.tool(
-        description="List connected Gmail accounts with their status and granted scopes.",
+        description=(
+            "List connected Gmail accounts with their status, account type, and granted OAuth "
+            "scopes. This is how to check a precondition before another tool: a send needs "
+            f"{SEND_SCOPE}, and a draft needs {' or '.join(COMPOSE_SCOPES)}."
+        ),
         annotations=READ_ONLY,
     )
     async def list_accounts() -> AccountToolResult:
@@ -299,8 +310,10 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
 
     @mcp.tool(
         description=(
-            "Return the Google consent URL for connecting a new Gmail account. A human must "
-            "open it in a browser; the gateway never opens one itself."
+            "Return the Google consent URL for connecting a new Gmail account. A human must open "
+            "it in a browser and approve the consent screen; the gateway never opens one itself, "
+            "and the URL expires, so a fresh call is needed per attempt. PRECONDITION: the gateway "
+            "must have an OAuth client configured, otherwise this returns a not-configured error."
         ),
         annotations=MUTATING,
     )
@@ -314,8 +327,9 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
 
     @mcp.tool(
         description=(
-            "Disconnect an account and delete its stored tokens. Any send already queued for it "
-            "will fail."
+            "Disconnect an account and permanently delete its stored tokens; they cannot be "
+            "recovered and the account must be reconnected by a human. Any send already queued "
+            "for it will fail."
         ),
         annotations=DESTRUCTIVE,
     )
@@ -325,8 +339,11 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
 
     @mcp.tool(
         description=(
-            "Create a draft instead of sending, so a human can review it in Gmail. Needs the "
-            "account to hold a compose scope; consumes no quota and creates no job."
+            f"Create a draft instead of sending, so a human can review it in Gmail. Consumes no "
+            f"quota and creates no job. PRECONDITION: the account must hold "
+            f"{' or '.join(COMPOSE_SCOPES)}; an account connected with "
+            f"{SEND_SCOPE} alone is refused with scope_missing. Call list_accounts first to see "
+            f"which scopes an account actually holds."
         ),
         annotations=MUTATING,
     )
@@ -390,7 +407,9 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
 
     @mcp.tool(
         description=(
-            "Full status of one send job, including the Gmail message id or the error code."
+            "Full status of one send job, including the Gmail message id or the typed error code. "
+            "Use the job_id returned by send_email or send_batch; there is no way to look a job up "
+            "by recipient or subject."
         ),
         annotations=READ_ONLY,
     )

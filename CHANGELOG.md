@@ -11,6 +11,12 @@ already merged.
 
 ### Fixed
 
+- MCP tool descriptions now state their preconditions, including the exact OAuth scope strings an
+  account must hold. `create_draft` previously said only "needs a compose scope", which a model
+  could not check against the scopes `list_accounts` reports, so a draft against a send-only account
+  cost a wasted turn. The scope text is interpolated from the same constants the enforcement uses,
+  so a description cannot drift from the check it documents, and tests pin that no tool hard-codes a
+  configurable limit.
 - The OAuth connect flow could not complete in `auth_mode=api_key`: `GET /v1/oauth/google/callback`
   was behind the API-key gate, but Google redirects the operator's browser there and a browser
   navigation cannot set an `Authorization` header, so it answered `401 missing Authorization
