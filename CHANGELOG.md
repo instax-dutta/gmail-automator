@@ -28,6 +28,19 @@ already merged.
 
 ### Fixed
 
+- A CLI command that raised a `GatewayError` printed a rich traceback instead of the one-line
+  actionable message the exception already carried. `accounts connect` - the first command in the
+  quickstart - hit this on the most likely first-run mistake there is, an unconfigured OAuth client.
+  Every command is now wrapped by one decorator, so a new command cannot regress it.
+- `POST /v1/send` did not report the remaining budget, while the MCP `send_email` result has always
+  done so. The two front doors now return the same information about the same operation.
+
+- The README described `POST /v1/send` as carrying `messages_remaining` and the stdio MCP config as
+  invoking `gmail_automator`. Both were wrong: the field was missing from the REST response and the
+  console script is `gmail-automator` (hyphen). The quickstart also named a compose service,
+  `gateway`, that does not exist. The whole quickstart is now verified by running it.
+
+
 - `list_messages` returned rows with no subject, sender, or date, because Gmail's `messages.list`
   returns ids only. A list an agent cannot act on without fetching every message is a list that has
   failed at its job, so each row is now hydrated with a metadata call. A row whose headers cannot be

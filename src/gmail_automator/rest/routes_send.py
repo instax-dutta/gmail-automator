@@ -21,11 +21,13 @@ router = APIRouter(prefix="/v1", tags=["send"], dependencies=AUTH)
 
 
 def _to_response(outcome: SendOutcome) -> SendEmailResponse:
+    snapshot = outcome.quota
     return SendEmailResponse(
         job_id=outcome.job_id,
         status=outcome.status,
         message_id=outcome.message_id,
         account=outcome.account_email,
+        messages_remaining=snapshot.messages_remaining if snapshot else None,
         error_code=outcome.error_code,
         error_message=outcome.error_message,
     )

@@ -60,6 +60,10 @@ class SendEmailResponse(BaseModel):
     status: Literal["sent", "queued", "failed"]
     message_id: str | None = None
     account: str
+    #: What is left of the rolling 24h budget, so a caller does not have to make a second call to
+    #: learn it. The MCP `send_email` result has carried this all along; the two front doors return
+    #: the same information, which is the whole point of having one policy behind both.
+    messages_remaining: int | None = None
     error_code: str | None = None
     error_message: str | None = None
 

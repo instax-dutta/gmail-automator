@@ -263,3 +263,28 @@ def test_one_time_secrets_go_to_stdout_and_warnings_to_stderr(cli_env: Path) -> 
     # The last line of stdout is the credential, so `| tail -1` captures exactly one full key.
     assert created.stdout.strip().splitlines()[-1].startswith("fmg_")
     assert _verify_created_key(created.stdout.strip().splitlines()[-1])
+
+
+def test_an_unconfigured_oauth_client_is_a_clean_error_not_a_traceback(cli_env: Path) -> None:
+    """The first command in the quickstart, run before the OAuth client is filled in.
+
+    It used to print a rich traceback, burying a one-line actionable message. The fix is a decorator
+    on every command, so a new command cannot regress this.
+    """
+    import gmail_automator.cli as cli_module
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setenv("GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_ID", "")
+    monkey.setenv("GMAIL_AUTOMATOR_GOOGLE_OAUTH_CLIENT_SECRET", "")
+    try:
+        result = _invoke("accounts", "connect")
+    finally:
+        monkey.undo()
+    assert result.exit_code == 1
+    text = result.output
+    assert "invalid_request" in text
+    assert "OAuth is not configured" in text
+    # The point of the test: no traceback, no framework internals.
+    assert "Traceback" not in text
+    assert "cli.py" not in text
+    assert cli_module.clean_errors is not None

@@ -477,3 +477,18 @@ class TestOAuthCallbackReachableByABrowser:
         assert first.status_code == 200
         again = test_client.get("/v1/oauth/google/callback", params={"code": "abc", "state": state})
         assert again.status_code >= 400
+
+
+def test_a_send_returns_the_remaining_budget(client: TestClient, connected: str) -> None:
+    """The agent should not have to make a second call to learn what is left.
+
+    The MCP `send_email` result has carried this all along; the REST response did not, which made
+    the two front doors disagree about the same operation.
+    """
+    before = client.get(f"/v1/quota/{connected}").json()["messages_remaining"]
+    response = client.post(
+        "/v1/send",
+        json={"to": ["someone@example.com"], "subject": "s", "body": "b"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["messages_remaining"] == before - 1

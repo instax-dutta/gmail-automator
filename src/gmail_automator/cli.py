@@ -11,6 +11,7 @@ import base64
 import json
 import secrets
 import sys
+from collections.abc import Callable
 from typing import Annotated, Any
 
 import typer
@@ -75,16 +76,38 @@ def _echo_json(payload: Any) -> None:
     typer.echo(json.dumps(payload, indent=2, default=str))
 
 
+def clean_errors(command: Callable[..., Any]) -> Callable[..., Any]:
+    """Render a `GatewayError` as `code: message` instead of a traceback.
+
+    Applied to every command rather than called inside the bodies: `accounts connect` shipped
+    without it, so the first command in the quickstart printed a rich traceback for the most likely
+    first-run mistake there is - an unconfigured OAuth client - when the actionable one-line message
+    was already in the exception. A decorator also cannot be forgotten by the next command.
+    """
+    import functools
+
+    @functools.wraps(command)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return command(*args, **kwargs)
+        except GatewayError as exc:
+            _fail(exc)
+
+    return wrapper
+
+
 # ------------------------------------------------------------------ top level
 
 
 @app.command()
+@clean_errors
 def version() -> None:
     """Print the gateway version."""
     typer.echo(__version__)
 
 
 @app.command()
+@clean_errors
 def serve(
     host: Annotated[
         str | None, typer.Option(help="Bind address; defaults to the configured one")
@@ -121,6 +144,7 @@ def create_app_for_serve(settings: Settings) -> Any:
 
 
 @app.command("mcp-stdio")
+@clean_errors
 def mcp_stdio() -> None:
     """Run the MCP server on stdio, for agent clients that spawn a subprocess.
 
@@ -141,6 +165,7 @@ def mcp_stdio() -> None:
 
 
 @app.command()
+@clean_errors
 def migrate() -> None:
     """Create or upgrade the database schema."""
     settings = _settings()
@@ -150,6 +175,7 @@ def migrate() -> None:
 
 
 @app.command("gen-key")
+@clean_errors
 def gen_key() -> None:
     """Generate a 32 byte token encryption key.
 
@@ -166,6 +192,7 @@ def gen_key() -> None:
 
 
 @app.command()
+@clean_errors
 def status(
     as_json: Annotated[bool, typer.Option("--json", help="Machine readable output")] = False,
 ) -> None:
@@ -228,6 +255,7 @@ def status(
 
 
 @app.command("send-test")
+@clean_errors
 def send_test(
     to: Annotated[str, typer.Argument(help="Recipient address")],
     account: Annotated[str | None, typer.Option(help="Account to send from")] = None,
@@ -286,6 +314,7 @@ def send_test(
 
 
 @keys_app.command("create")
+@clean_errors
 def keys_create(
     name: Annotated[str, typer.Argument(help="Human readable label for the key")],
     scopes: Annotated[
@@ -318,6 +347,7 @@ def keys_create(
 
 
 @keys_app.command("list")
+@clean_errors
 def keys_list() -> None:
     """List API keys and their prefixes (never the secrets)."""
     container = _container()
@@ -325,6 +355,7 @@ def keys_list() -> None:
 
 
 @keys_app.command("revoke")
+@clean_errors
 def keys_revoke(
     prefix: Annotated[str, typer.Argument(help="Key prefix, e.g. fmg_1a2b3c4d")],
 ) -> None:
@@ -341,6 +372,7 @@ def keys_revoke(
 
 
 @accounts_app.command("list")
+@clean_errors
 def accounts_list() -> None:
     """List connected Gmail accounts."""
     container = _container()
@@ -350,6 +382,7 @@ def accounts_list() -> None:
 
 
 @accounts_app.command("connect")
+@clean_errors
 def accounts_connect(
     login_hint: Annotated[str | None, typer.Option(help="Pre-fill the Google account")] = None,
     show: Annotated[bool, typer.Option("--show", help="Print the URL only")] = True,
@@ -374,6 +407,7 @@ def accounts_connect(
 
 
 @accounts_app.command("disconnect")
+@clean_errors
 def accounts_disconnect(account: Annotated[str, typer.Argument(help="Account address")]) -> None:
     """Disconnect an account and delete its stored tokens."""
     container = _container()
@@ -387,6 +421,7 @@ def accounts_disconnect(account: Annotated[str, typer.Argument(help="Account add
 
 
 @app.command("rotate-keys")
+@clean_errors
 def rotate_keys(
     new_key: Annotated[
         str | None, typer.Option(help="New base64 key; defaults to the configured key")
@@ -497,6 +532,7 @@ def _decode_key(value: str | None, label: str) -> bytes:
 
 
 @app.command("purge-history")
+@clean_errors
 def purge_history(
     days: Annotated[
         int | None, typer.Option(help="Days to keep; defaults to the configured value")
