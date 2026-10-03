@@ -3,3 +3,6 @@ contact_links:
   - name: Question or discussion
     url: https://github.com/instax-dutta/gmail-automator/discussions
     about: Usage questions, configuration help, and "is this supposed to work" belong in Discussions.
+  - name: Security vulnerability
+    url: https://github.com/instax-dutta/gmail-automator/security/advisories/new
+    about: Report privately. Do not open a public issue for a suspected vulnerability.

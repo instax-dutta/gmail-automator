@@ -11,6 +11,15 @@ already merged.
 
 ### Added
 
+- `SECURITY.md`, restoring a private reporting channel. The policy was dropped in `310bc6f` on the
+  grounds that nothing required it, and that commit recorded the cost: with no `SECURITY.md` GitHub
+  offers no private "Report a vulnerability" form, so a reporter had no private channel. Private
+  vulnerability reporting is now enabled on the repository, which is the thing the file exists to
+  serve. It states what is in scope for a gateway that holds a live OAuth credential and spends a
+  real sending quota, records the response expectations without inventing an SLA, and lists the
+  security properties with the test that fails the build if each stops holding. The issue chooser,
+  PR template, `CONTRIBUTING.md`, the code of conduct, and the package metadata now point at it
+  again.
 - Mailbox read, reply, and organisation, so an agent can manage a mailbox rather than only fire
   off messages. Six new tools on both surfaces: `list_messages` (Gmail search syntax passed
   through), `read_message` (decoded headers, `text/plain` preferred over HTML, RFC 2047 unpacked),

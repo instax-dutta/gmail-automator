@@ -24,5 +24,6 @@
 - [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
 
 <!--
-A security issue does not belong in a pull request. Contact the maintainer privately instead.
+A security issue does not belong in a pull request. See [SECURITY.md](../SECURITY.md) and report it
+through the private advisory form.
 -->

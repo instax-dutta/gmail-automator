@@ -50,7 +50,8 @@ officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behaviour may be reported to the
-maintainer directly through their GitHub profile, in a private channel rather than a public issue.
+maintainer through their GitHub profile, or privately through the repository's
+**Security -> Report a vulnerability** form, in a private channel rather than a public issue.
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any

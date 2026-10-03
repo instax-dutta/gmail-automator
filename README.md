@@ -33,7 +33,8 @@ want the mailbox credential to stay encrypted on your own host.
 A restart is not a lost email: the queue is a table with leases, so the next worker resumes.
 
 **Docs:** [Google Cloud setup](docs/google-cloud-setup.md) · [Operations runbook](docs/operations.md) ·
-[Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [llms.txt](llms.txt)
+[Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md) ·
+[llms.txt](llms.txt)
 
 ---
 

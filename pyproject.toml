@@ -65,6 +65,8 @@ Source = "https://github.com/instax-dutta/gmail-automator"
 Issues = "https://github.com/instax-dutta/gmail-automator/issues"
 Changelog = "https://github.com/instax-dutta/gmail-automator/blob/main/CHANGELOG.md"
 Discussions = "https://github.com/instax-dutta/gmail-automator/discussions"
+Security = "https://github.com/instax-dutta/gmail-automator/security/policy"
+"/SECURITY.md" = "https://github.com/instax-dutta/gmail-automator/blob/main/SECURITY.md"
 
 [project.scripts]
 gmail-automator = "gmail_automator.cli:app"
