@@ -4,25 +4,36 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 
-**Let your AI agent send email as you - without it ever getting your account locked.**
+**Let Claude Code, Cursor, OpenCode, or any AI agent send, read, and reply to Gmail as you - without
+it ever getting your account locked.**
 
-gmail-automator is a small service you run yourself. Your agent talks to it over MCP (or a REST
-API); it holds the Google credential so your agent never does, and it accounts for every send
-against Gmail's real sending limit *before* contacting Google.
+gmail-automator is a self-hosted **MCP server** for Gmail that exposes 14 tools to AI agents and
+coding agents over the Model Context Protocol, with a REST API alongside it. It holds the Google
+OAuth credential so your agent never does, and it accounts for every send against Gmail's real
+sending quota *before* contacting Google - refusing a send that would breach the limit instead of
+discovering the limit by hitting it.
+
+Use it when you want an agent to **send email from Claude Code or Cursor**, **read and triage a
+Gmail inbox with an LLM**, **reply to email on your behalf**, or **automate outreach** - and you
+want the mailbox credential to stay encrypted on your own host.
+
+| | |
+|---|---|
+| **Protocol** | MCP (Model Context Protocol) over Streamable HTTP or stdio; REST API at `/v1` |
+| **Works with** | Claude Code, Claude Desktop, Cursor, Windsurf, OpenCode, Cline, Continue, any MCP client |
+| **License** | MIT. Self-hosted. No vendor lock-in, no paid tier, no signup |
+| **Language** | Python 3.12+, FastAPI, SQLAlchemy. SQLite by default, PostgreSQL optional |
+| **Credentials** | AES-256-GCM encrypted at rest, never returned by the API, never logged |
+| **Default scope** | `gmail.send` only. Read, reply, and labels refuse until you widen it |
+| **Quota** | Enforces Gmail's rolling 24-hour limit at 85%, pacing and backoff included |
 
 > **Alpha.** Pre-1.0: the API can still change. Pin a version if you depend on it. Nothing here is
 > load-bearing for your mail until you point an agent at it.
 
-- **MIT, no vendor lock-in, no paid tier.** SQLite by default, PostgreSQL optional. Nothing to sign
-  up for.
-- **The agent never sees your refresh token.** It is AES-256-GCM encrypted at rest and bound to the
-  account address, so it cannot be moved between accounts and never appears in a log.
-- **Send-only by default.** Connect with `gmail.send` and the read, reply, and label tools refuse
-  with `scope_missing` rather than quietly doing nothing. You widen the grant, or you don't.
-- **A restart is not a lost email.** The queue is a table with leases; the next worker resumes.
+A restart is not a lost email: the queue is a table with leases, so the next worker resumes.
 
 **Docs:** [Google Cloud setup](docs/google-cloud-setup.md) · [Operations runbook](docs/operations.md) ·
-[Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+[Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [llms.txt](llms.txt)
 
 ---
 
@@ -46,18 +57,43 @@ validation, the same quota check, and the same errors, so there is no side door 
 
 ---
 
-## Why not just let the agent call Gmail directly?
+## How it compares
 
-For a one-off script, do that. This exists for the case where the agent is autonomous enough that
-"the agent overshot the quota" is a real possibility:
+Most "let my agent use Gmail" answers point at one of these. Each solves part of the problem.
 
-| | direct Gmail API | gmail-automator |
-|---|---|---|
-| Quota | the agent discovers it by hitting it | refused before the call, with the numbers |
-| OAuth token | held by the agent | held by the gateway, encrypted |
-| Process restart | in-flight sends are lost | a queued job is a row; the next worker sends it |
-| Blast radius | all the scopes you granted | one scope by default, per-key on top |
-| Agent-facing errors | Google's error strings | stable codes like `quota_exceeded` and the budget left |
+| Approach | Credential lives | Quota enforced | Survives restart | Cost | What it misses |
+|---|---|---|---|---|---|
+| **gmail-automator** | on your host, encrypted | before the call, with numbers | durable queue | free, MIT | you run it |
+| Gmail API called directly by the agent | in the agent | discovered by hitting it | in-flight sends lost | free | the agent can lock you out |
+| Handing the agent a refresh token | in the agent's context | not enforced | n/a | free | worst option - a leak is a mailbox |
+| Composio, Zapier, Make, n8n | a SaaS vendor | vendor-side | vendor-side | paid tier | your mail routes through a third party |
+| Hosted or community Gmail MCP servers | the operator's SaaS | unknown | unknown | paid | same, plus you cannot audit the quota path |
+| Purpose-built mail API (SendGrid, Postmark, SES) | a vendor key | vendor-side | vendor-side | per send | not Gmail; no inbox, no threads, no labels |
+
+The distinction that matters: everyone else either gives the agent the credential or gives a vendor
+your mail. This keeps the credential and makes the dangerous send **impossible** rather than merely
+discouraged - a send that would cross Gmail's limit is rejected before Google is contacted, with the
+numbers in the error, so the agent gets a decision to make instead of a lockout to recover from.
+
+If you only need to fire off the occasional message from a script, call the Gmail API directly. This
+is for the case where the agent is autonomous enough that "the agent overshot the quota" is a real
+possibility.
+
+---
+
+## What people build with it
+
+- **Email from a coding agent.** A Claude Code session opens a PR, the CI run goes green, and the
+  agent emails the result to the reviewer - without the agent ever holding a token.
+- **Inbox triage.** An agent reads unread mail with Gmail's own search syntax (`is:unread`,
+  `newer_than:7d`, `from:`), labels what it can categorise, and leaves the rest for you.
+- **Replies that thread.** `reply` derives the recipient, subject, `In-Reply-To`, the whole
+  `References` chain, and Gmail's `threadId` from the original, so a reply lands in the same
+  conversation instead of a new one.
+- **Outreach that respects the limit.** Queue a batch, let pacing spread the sends, and get
+  `messages_remaining` back on every response.
+- **Human review before anything sends.** `draft: true`, or `create_draft`, leaves the message in
+  Gmail for a person to approve.
 
 ---
 
@@ -136,7 +172,8 @@ hard part is done.
 ## Point your agent at it
 
 This is the part that makes it useful. MCP (the Model Context Protocol) is how agent tools are
-exposed over HTTP, so any MCP client can drive this.
+exposed over HTTP, so any MCP client can drive this - Claude Code, Claude Desktop, Cursor, Windsurf,
+OpenCode, Cline, Continue, Zed, or anything else that speaks MCP.
 
 **Streamable HTTP** - same process as the API, guarded by the same key:
 
@@ -151,8 +188,10 @@ exposed over HTTP, so any MCP client can drive this.
 }
 ```
 
-Drop that into the MCP config your client reads (Claude Desktop, Cursor, Windsurf, OpenCode, and most
-others use this shape). Two things that will otherwise cost you an hour:
+Drop that into the MCP config your client reads. Claude Desktop uses
+`claude_desktop_config.json`; Cursor and Windsurf use `~/.cursor/mcp.json` and
+`~/.codeium/windsurf/mcp_config.json`; OpenCode and Cline take the same `mcpServers` shape in their
+own config files. Two things that will otherwise cost you an hour:
 
 - Use `/mcp` **without** a trailing slash. `/mcp/` answers `307`, which MCP clients do not follow for
   POST, so it fails with an opaque error.
@@ -332,6 +371,63 @@ rolling 24 hours. Those are Google's numbers, not constants here.
 Every one of these is configuration, and
 [`docs/google-cloud-setup.md`](docs/google-cloud-setup.md) records the published figures the defaults
 came from.
+
+---
+
+## FAQ
+
+### Can an AI agent send email without getting my Gmail account banned?
+
+Yes, and that is the specific problem this exists to solve. Gmail allows roughly 500 messages a day
+on a personal account and 2,000 on Workspace, counted over a rolling 24 hours. Agents retry, and a
+retry loop looks like a rate limit, then like a lockout, and Gmail's recovery is measured in hours or
+days. gmail-automator stops at 85% of the hard limit (425 of 500 on a personal account) and rejects
+any send that would cross the line *before* Google is contacted, returning the remaining budget in
+the error.
+
+### Does my AI agent ever see my Google OAuth token?
+
+No. The refresh token is AES-256-GCM encrypted at rest, bound to the account address as associated
+data so it cannot be moved between accounts, and is never returned by the API or written to a log.
+Your agent holds a scoped gateway API key instead (`fmg_...`), stored as a prefix plus a SHA-256 hash
+and shown exactly once.
+
+### Which AI coding tools can use this?
+
+Any MCP client. There are ready-made configs for Claude Code, Claude Desktop, Cursor, Windsurf,
+OpenCode, Cline, Continue, and Zed - all of them read the same `mcpServers` JSON shown above. There
+is also a plain REST API at `/v1` if you would rather call it from a script.
+
+### Can the agent read my Gmail, or is it send-only?
+
+Send-only by default, on purpose. An account connected with `gmail.send` cannot be read: the
+`read_message`, `list_messages`, `reply`, and `modify_message` tools refuse with `scope_missing`
+rather than quietly doing nothing. To let an agent into the mailbox, widen
+`GMAIL_AUTOMATOR_SOOGLE_OAUTH_SCOPES` to `gmail.modify` (or `gmail.readonly` for reading alone) and
+reconnect. Widening it is a real change in what the gateway can reach, not a formality.
+
+### Is there a hosted version?
+
+No, and that is the trade. The credential never leaves your host. It runs in Docker or a systemd
+unit, binds `127.0.0.1:8000` by default, and needs no Redis, no broker, and no database you have to
+operate.
+
+### What happens if the service restarts mid-send?
+
+Nothing is lost. The queue is a table with leases, so a queued job is a row: the next worker picks
+it up and sends it. Pacing is stored as a not-before time per job rather than a sleep, so the
+schedule survives the restart too.
+
+### Does it send real email or simulate it?
+
+Real email, through the whole path: quota check, queue, worker, Gmail. `gmail-automator send-test
+you@gmail.com` is a genuine send - if it arrives, the hard part is done.
+
+### Can an AI agent reply to an email without breaking the thread?
+
+Yes. `reply` derives the recipient, the subject, `In-Reply-To`, the entire existing `References`
+chain, and Gmail's `threadId` from the original message, so the reply lands in the same
+conversation. Pass `draft: true` to leave it in Gmail for a human to review instead of sending.
 
 ---
 

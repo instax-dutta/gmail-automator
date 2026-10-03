@@ -1,0 +1,57 @@
+# gmail-automator
+
+> A self-hosted MCP server that gives AI agents and coding agents full Gmail access - sending,
+> reading, replying, and organising - while keeping the Google OAuth credential and Gmail's sending
+> quota under your control rather than the agent's.
+
+gmail-automator exposes 14 tools to any MCP client (Claude Code, Claude Desktop, Cursor, Windsurf,
+OpenCode, Cline, Continue, Zed) plus a REST API at `/v1`. It is a quota-aware send proxy with a
+durable queue in front of the Gmail API. MIT licensed, no vendor lock-in, no paid tier, no signup.
+
+Use it to let an AI agent send email from a coding session, read and triage a Gmail inbox, reply
+without breaking the thread, or automate outreach - without handing the agent a Google credential
+that could lock the account out.
+
+## What it does
+
+- **Send email from an AI agent** over MCP or REST, with a durable queue, per-account pacing, and
+  exponential backoff that honours `Retry-After`.
+- **Read and organise a Gmail inbox**: search with Gmail's own syntax, read decoded headers and
+  bodies, reply threaded correctly, star, archive, trash, and file by label.
+- **Enforce Gmail's sending quota before the call.** Gmail allows roughly 500 messages a day on a
+  personal account and 2,000 on Workspace over a rolling 24 hours. This gateway stops at 85% (425 of
+  500) and refuses any send that would cross the line, returning the remaining budget in the error.
+- **Hold the credential, not the agent.** OAuth refresh tokens are AES-256-GCM encrypted at rest,
+  bound to the account address as associated data, and never returned by the API or logged. Agents
+  hold a scoped gateway API key instead.
+- **Default to send-only.** An account connected with `gmail.send` cannot be read; the read, reply,
+  and label tools refuse with `scope_missing` rather than degrading silently.
+
+## When to use it, and when not to
+
+Use it when the agent is autonomous enough that "the agent overshot the quota" is a real
+possibility, and you want the mailbox credential to stay encrypted on your own host. If you only
+need to fire off the occasional message from a script, call the Gmail API directly. There is no
+hosted version, by design: the credential never leaves your host.
+
+Not for bulk or unsolicited mail, multi-tenant isolation, or guaranteed delivery. You remain
+responsible for the Gmail Terms of Service and recipient consent.
+
+## Documentation
+
+- [README](https://github.com/instax-dutta/gmail-automator/blob/main/README.md): full
+  documentation, quickstart, tool reference, REST API, configuration, and FAQ.
+- [Google Cloud setup](https://github.com/instax-dutta/gmail-automator/blob/main/docs/google-cloud-setup.md):
+  Cloud project, OAuth client, redirect URI, service accounts for Workspace domain-wide delegation.
+- [Operations runbook](https://github.com/instax-dutta/gmail-automator/blob/main/docs/operations.md):
+  key rotation, backups, upgrades, and failure modes.
+- [Contributing](https://github.com/instax-dutta/gmail-automator/blob/main/CONTRIBUTING.md) and
+  [Changelog](https://github.com/instax-dutta/gmail-automator/blob/main/CHANGELOG.md).
+
+## Key facts
+
+- License: MIT. Python 3.12+. FastAPI, SQLAlchemy, google-api-python-client.
+- Database: SQLite by default, PostgreSQL optional. No Redis or message broker.
+- Install: `docker compose up -d`, or `uv sync` and run `gmail-automator serve`.
+- MCP endpoint: `POST /mcp` (no trailing slash) or `gmail-automator mcp-stdio`.
+- Default bind: `127.0.0.1:8000`. Auth: `Authorization: Bearer fmg_...`.
