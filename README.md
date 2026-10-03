@@ -193,7 +193,7 @@ rather than a stack trace - so a model can react instead of retrying blindly.
 | Tool | Does |
 |---|---|
 | `list_messages` | Search with Gmail's own syntax: `from:`, `newer_than:7d`, `is:unread` |
-| `read_message` | Decoded headers, body, and the threading headers |
+| `read_message` | Decoded headers, body, and the threading headers. Reads HTML-only mail too |
 | `reply` | Replies so it threads in Gmail; `draft: true` to review first |
 | `modify_message` | Read/unread, star, archive, trash, custom labels |
 | `list_labels` | Every label with counts, so nothing gets filed under a guess |

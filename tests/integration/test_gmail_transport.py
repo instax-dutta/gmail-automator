@@ -215,7 +215,6 @@ def _seed(**message: object) -> None:
     before the test body, and these tests assert on the last request rather than the first, so a
     record left by a sibling test would otherwise be found instead.
     """
-    import base64
 
     FAKE_APP.state.requests.clear()
     raw = (
@@ -240,7 +239,7 @@ def _seed(**message: object) -> None:
                     "Subject": message.get("subject", "Quarterly numbers"),
                     "Date": "Tue, 29 Sep 2026 12:00:00 +0000",
                 },
-                "raw_b64": base64.urlsafe_b64encode(raw).decode().rstrip("="),
+                "raw": raw,
             }
         ]
     }
@@ -262,16 +261,40 @@ def test_list_messages_hydrates_the_envelope_from_the_list_row() -> None:
     assert row.label_ids == ("INBOX",)
 
 
-def test_list_messages_keeps_the_row_when_its_headers_cannot_be_fetched() -> None:
-    """One unreadable message must not make an otherwise good search unusable."""
+def test_list_messages_keeps_the_row_when_its_detail_has_no_headers() -> None:
+    """A listed message whose detail carries nothing still yields a usable row."""
     _seed()
-    FAKE_APP.state.mailbox["messages"].append({"id": "gone", "threadId": "t2", "labelIds": []})
+    FAKE_APP.state.mailbox["messages"].append({"id": "bare", "threadId": "t2", "labelIds": []})
     page = _transport().list_messages(email="me@example.com", access_token="tok", max_results=5)
     by_id = {m.id: m for m in page.messages}
-    assert "gone" in by_id
-    assert by_id["gone"].subject == ""
+    assert "bare" in by_id
+    assert by_id["bare"].subject == ""
     # The readable row still came back fully populated.
     assert by_id["m1"].subject == "Quarterly numbers"
+
+
+def test_list_messages_keeps_the_row_when_its_fetch_fails(monkeypatch) -> None:
+    """One unreadable message must not make an otherwise good search unusable.
+
+    `hydrate` swallows a failed `messages.get` and falls back to the bare id. The fake serves its
+    list and its get from one store, so the failure is injected here rather than seeded.
+    """
+    _seed()
+    real_get_message = GoogleGmailTransport.get_message
+
+    def fail_one(self, *, email, access_token, message_id, headers=()):
+        if message_id == "m1":
+            raise GoogleApiError(status_code=500, reason="backendError", message="backend error")
+        return real_get_message(
+            self, email=email, access_token=access_token, message_id=message_id, headers=headers
+        )
+
+    monkeypatch.setattr(GoogleGmailTransport, "get_message", fail_one)
+    page = _transport().list_messages(email="me@example.com", access_token="tok", max_results=5)
+    by_id = {m.id: m for m in page.messages}
+    assert by_id["m1"].subject == ""
+    assert by_id["m1"].snippet == ""
+    assert by_id["m1"].label_ids == ()
 
 
 def test_list_messages_passes_the_query_and_paging_through() -> None:

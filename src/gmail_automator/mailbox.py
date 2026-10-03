@@ -13,10 +13,11 @@ gateway keeps working without it: `read`, `list_messages`, and `modify_message` 
 from __future__ import annotations
 
 import base64
+import binascii
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
-from email import message_from_bytes
 from email.header import decode_header, make_header
 from email.message import Message
 from typing import Any
@@ -32,6 +33,7 @@ from gmail_automator.gmail.client import (
     MessagePage,
     MessageSummary,
 )
+from gmail_automator.html_text import html_to_text
 from gmail_automator.tokens import TokenManager
 
 SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
@@ -133,42 +135,116 @@ def unfold_header(value: str) -> str:
     return re.sub(r"\r?\n[ \t]+", " ", value).replace("\r", " ").replace("\n", " ").strip()
 
 
-def _header_map(message: Message) -> dict[str, str]:
+def _header_map(headers: Any) -> dict[str, str]:
+    """Normalise a Gmail `headers` list into a lowercased name -> unfolded text map.
+
+    Gmail hands headers over as `[{"name": ..., "value": ...}]` on every part of the tree, and a
+    long header such as `References` arrives folded with the continuation indented. Unfolding on
+    the way in means the value is a plain single line everywhere downstream, which is what keeps a
+    reply from copying a CRLF into one of its own headers.
+    """
     out: dict[str, str] = {}
-    for key, value in message.items():
-        out[key.lower()] = unfold_header(decode_header_value(value))
+    for item in headers or ():
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip().lower()
+        if name and name not in out:
+            out[name] = unfold_header(decode_header_value(item.get("value")))
     return out
 
 
-def _charset_of(part: Message) -> str:
-    """The declared charset, or utf-8. Mail in the wild is mostly utf-8 or ascii."""
+def _declared_charset(content_type: str | None) -> str | None:
+    """The charset a part's own `Content-Type` declares, if it is one we can name.
+
+    Read from the part rather than the root because a part is the only thing that can be sure what
+    its own bytes are: Exchange sends a Latin-1 body inside a `multipart/alternative` next to a
+    utf-8 sibling, and the root header says nothing about either.
+    """
+    if not content_type:
+        return None
+    probe = Message()
+    probe["Content-Type"] = content_type
+    return probe.get_content_charset() or None
+
+
+def _leaf_parts(part: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Depth-first walk of Gmail's MIME tree, yielding the leaves in document order.
+
+    A part with children holds no body of its own: for a multipart message Gmail leaves
+    `payload.body.data` unset and puts every byte under `payload.parts`, so a walk that stops at
+    the root finds nothing at all.
+
+    Iterative rather than recursive on purpose. Nesting depth is chosen by the sender, and a
+    message nested a couple of thousand levels deep is junk that must still be read as "no body"
+    rather than raising `RecursionError` out of a tool call.
+    """
+    stack: list[dict[str, Any]] = [part]
+    while stack:
+        current = stack.pop()
+        children = [child for child in (current.get("parts") or ()) if isinstance(child, dict)]
+        if children:
+            # Reversed, so popping yields the parts in the order the document lists them.
+            stack.extend(reversed(children))
+            continue
+        yield current
+
+
+def _mime_type_of(part: dict[str, Any], headers: dict[str, str]) -> str:
+    """The part's MIME type, from the API field with its own header as the fallback."""
+    declared = str(part.get("mimeType") or "").strip()
+    if declared:
+        return declared.split(";", 1)[0].strip().lower()
+    return headers.get("content-type", "").split(";", 1)[0].strip().lower() or "text/plain"
+
+
+def _decoded_part_bytes(part: dict[str, Any]) -> bytes | None:
+    """A leaf's content, or None when it carries none.
+
+    Gmail base64url-encodes `body.data` and strips the padding. The bytes are already transfer
+    decoded, so nothing here applies a second `Content-Transfer-Encoding`: decoding them as text
+    here and re-encoding later is what turns a Latin-1 body into U+FFFD, because the part's own
+    charset cannot rescue bytes that were already destroyed.
+    """
+    data = part.get("body", {}).get("data") if isinstance(part.get("body"), dict) else None
+    if not data:
+        return None
     try:
-        return part.get_content_charset() or "utf-8"
-    except (LookupError, ValueError):
-        return "utf-8"
+        return base64.urlsafe_b64decode(str(data) + "=" * (-len(str(data)) % 4))
+    except (binascii.Error, ValueError):
+        return None
 
 
-def _walk_parts(message: Message) -> tuple[str | None, str | None]:
-    """Find the best text and HTML bodies from a MIME tree.
+def _walk_parts(root: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Find the best text and HTML bodies from a Gmail payload tree.
 
     Prefers `text/plain` because an agent acting on mail should act on what the sender actually
-    wrote, not on markup; falls back to HTML when a message has nothing else.
-    `multipart/alternative` is walked in order so the first plain part wins.
+    wrote, not on markup; falls back to HTML when a message has nothing else, which is the normal
+    shape of an HTML-only message from Exchange. Attachment parts are skipped so an inline PDF's
+    decoded bytes are never mistaken for the body.
+
+    A part that decodes to nothing but whitespace counts as absent. Senders do ship a `text/plain`
+    part that is empty precisely because they have nothing to say in it, and treating that as the
+    body would leave the agent with an empty string where the HTML alternative had the message.
     """
     plain: str | None = None
     html: str | None = None
-    for part in message.walk():
-        if part.get_content_maintype() == "multipart":
-            continue
-        disposition = (part.get("Content-Disposition") or "").lower()
-        if "attachment" in disposition:
-            continue
-        content_type = part.get_content_type()
+    for part in _leaf_parts(root):
+        headers = _header_map(part.get("headers"))
+        content_type = _mime_type_of(part, headers)
         if content_type not in ("text/plain", "text/html"):
             continue
-        raw_part = part.get_payload(decode=True)
-        encoded = raw_part if isinstance(raw_part, bytes) else b""
-        body = encoded.decode(_charset_of(part), "replace")
+        if "attachment" in headers.get("content-disposition", "").lower() or part.get("filename"):
+            continue
+        data = _decoded_part_bytes(part)
+        if data is None:
+            continue
+        charset = _declared_charset(headers.get("content-type")) or "utf-8"
+        try:
+            body = data.decode(charset, "replace")
+        except LookupError:
+            body = data.decode("utf-8", "replace")
+        if not body.strip():
+            continue
         if content_type == "text/plain" and plain is None:
             plain = body
         elif content_type == "text/html" and html is None:
@@ -176,34 +252,33 @@ def _walk_parts(message: Message) -> tuple[str | None, str | None]:
     return plain, html
 
 
-def _decode_payload_part(part: dict[str, Any]) -> str:
-    data = part.get("body", {}).get("data")
-    if not data:
-        return ""
-    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "replace")
+def _bodies_from_payload(root: dict[str, Any]) -> tuple[str | None, str | None]:
+    """The plain and HTML bodies, deriving the plain one from the HTML when that is all there is.
+
+    Exchange, Outlook and most notification senders offer only a `text/html` alternative, and
+    `body_text` is the field an agent is told to read. Leaving it null for the majority of
+    inbound business mail would make the preferred field the unreliable one, so the markup is
+    rendered into prose. The markup is not discarded: `body_html` still carries it verbatim.
+    """
+    plain, html = _walk_parts(root)
+    if plain is None and html is not None:
+        plain = html_to_text(html)
+    return plain, html
 
 
 def detail_from_payload(payload: dict[str, Any]) -> MessageDetail:
     """Turn a Gmail `messages.get` payload into a `MessageDetail`.
 
-    Gmail hands the message as a MIME tree with base64url parts, and the threading headers in
-    `payload.headers` as well as inside the parsed message. The parsed copy is preferred because it
-    unfolds folded headers, which a `References` chain routinely is.
+    `format=full` returns a MIME tree rather than a message: the root part carries the headers,
+    and each leaf carries its own content under `body.data`. Reading only the root `body.data`
+    looks like it works, because for a single-part message that field holds the whole content -
+    but it is unset on a multipart message, so every multipart message, HTML-only Outlook mail
+    among them, came back with both bodies null. The tree is walked instead, and a message that
+    offers only HTML gets its `body_text` rendered from that markup.
     """
-    raw = _decode_payload_part(payload.get("payload") or {})
-    headers: dict[str, str] = {}
-    plain: str | None = None
-    html: str | None = None
-    if raw:
-        parsed = message_from_bytes(raw.encode("utf-8", "replace"))
-        headers = _header_map(parsed)
-        plain, html = _walk_parts(parsed)
-    # Gmail's own header list is the fallback when the MIME tree could not be parsed.
-    for item in payload.get("payload", {}).get("headers", ()) or ():
-        name = str(item.get("name", "")).lower()
-        if name and name not in headers:
-            headers[name] = decode_header_value(item.get("value"))
-    envelope = payload.get("payload", {}) if "payload" in payload else {}
+    root = payload.get("payload") or {}
+    headers = _header_map(root.get("headers"))
+    plain, html = _bodies_from_payload(root)
     return MessageDetail(
         id=str(payload.get("id", "")),
         thread_id=payload.get("threadId"),
@@ -211,7 +286,7 @@ def detail_from_payload(payload: dict[str, Any]) -> MessageDetail:
         sender=headers.get("from", ""),
         recipients=headers.get("to", ""),
         date=headers.get("date", ""),
-        snippet=str(envelope.get("snippet", "") or ""),
+        snippet=str(payload.get("snippet", "") or ""),
         label_ids=tuple(payload.get("labelIds") or ()),
         message_id_header=headers.get("message-id"),
         in_reply_to=headers.get("in-reply-to"),

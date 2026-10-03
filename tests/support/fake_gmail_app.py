@@ -5,6 +5,8 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from tests.support.gmail_payload import gmail_payload
+
 DEFAULT_ACCOUNT = "sender@example.com"
 
 
@@ -143,15 +145,9 @@ def fake_gmail_app() -> FastAPI:
         next_start = start + max_results
         return JSONResponse(
             {
-                "messages": [
-                    {
-                        "id": m["id"],
-                        "threadId": m.get("threadId"),
-                        "snippet": m.get("snippet", ""),
-                        "labelIds": m.get("labelIds", []),
-                    }
-                    for m in window
-                ],
+                # A bare id and a thread id, which is all this endpoint populates. Returning a
+                # snippet or label ids here would let a wrong read of them pass unnoticed.
+                "messages": [{"id": m["id"], "threadId": m.get("threadId")} for m in window],
                 "nextPageToken": str(next_start) if next_start < len(messages) else None,
                 "resultSizeEstimate": len(messages),
             }
@@ -165,21 +161,18 @@ def fake_gmail_app() -> FastAPI:
         store = _mailbox()
         for message in store.get("messages", []):
             if message["id"] == message_id:
+                # Assembled as a real MIME tree rather than one flat blob: Gmail leaves the root
+                # body of a multipart message unset, and a double that always returns a flat blob
+                # cannot exercise the multipart path the parser actually has to handle.
                 return JSONResponse(
-                    {
-                        "id": message["id"],
-                        "threadId": message.get("threadId"),
-                        "labelIds": message.get("labelIds", []),
-                        "payload": {
-                            "headers": [
-                                {"name": key, "value": value}
-                                for key, value in (message.get("headers") or {}).items()
-                            ],
-                            "mimeType": message.get("mimeType", "text/plain"),
-                            "body": {"data": message.get("raw_b64", "")},
-                            "snippet": message.get("snippet", ""),
-                        },
-                    }
+                    gmail_payload(
+                        message.get("raw", b""),
+                        message_id=message["id"],
+                        thread_id=message.get("threadId"),
+                        label_ids=tuple(message.get("labelIds", [])),
+                        snippet=message.get("snippet", ""),
+                        headers=message.get("headers"),
+                    )
                 )
         return JSONResponse(
             {"error": {"code": 404, "message": "Not Found", "errors": [{"reason": "notFound"}]}},

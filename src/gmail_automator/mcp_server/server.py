@@ -478,7 +478,10 @@ def create_mcp_server(get_container: Callable[[], Container]) -> MCPServer:
             "Read one message in full: decoded headers, body_text (preferred), body_html, and the "
             "threading headers. Message ids come from list_messages or get_send_status. Bodies are "
             "base64url in Gmail's API and decoded here, and RFC 2047 headers are decoded, so the "
-            "result is readable rather than raw. PRECONDITION: needs a read scope."
+            "result is readable rather than raw. When a message offers only HTML, which is normal "
+            "for Outlook and Exchange, body_text is rendered from that markup and body_html keeps "
+            "the original. body_text is null only when the message carries no readable body at "
+            "all. PRECONDITION: needs a read scope."
         ),
         annotations=READ_ONLY,
     )

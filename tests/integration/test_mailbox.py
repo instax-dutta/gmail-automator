@@ -134,6 +134,99 @@ def test_get_message_returns_the_decoded_body(full_access) -> None:
     assert detail.sender == "Someone <someone@example.com>"
 
 
+def test_get_message_reads_an_html_only_multipart_message(full_access) -> None:
+    """The end-to-end shape of the bug: Exchange sends no plain alternative, so the root body is unset."""
+    container, _transport, email = full_access
+    container.transport.seed_message("html", raw=_outlook_html_only())
+    detail = container.mailbox.get_message(message_id="html", account_email=email, now=NOW)
+    assert detail.body_html is not None
+    assert "Invoice #5521 is attached." in detail.body_html
+    assert detail.subject == "Your invoice is ready"
+    assert detail.sender == "Billing <billing@nebius.com>"
+    assert detail.message_id_header == "<abc123@nebius.com>"
+
+
+def test_an_html_only_message_still_yields_readable_body_text(full_access) -> None:
+    """`body_text` is the field an agent is told to read, so it must not be null for HTML-only mail."""
+    container, _transport, email = full_access
+    container.transport.seed_message("html", raw=_outlook_html_only())
+    detail = container.mailbox.get_message(message_id="html", account_email=email, now=NOW)
+    assert detail.body_text is not None
+    assert "Your invoice is ready" in detail.body_text
+    assert "View invoice <https://billing.nebius.com/i/5521>" in detail.body_text
+    # The markup is not lost, and none of the presentational scaffolding leaks into the prose.
+    assert detail.body_html is not None and "<table" in detail.body_html
+    for leak in ("<p>", "<table", "<h1>", "color:red", "role="):
+        assert leak not in detail.body_text
+
+
+def test_the_plain_part_is_never_replaced_by_rendered_html(full_access) -> None:
+    container, _transport, email = full_access
+    container.transport.seed_message("both", raw=_plain_and_html())
+    detail = container.mailbox.get_message(message_id="both", account_email=email, now=NOW)
+    assert detail.body_text is not None
+    assert detail.body_text.strip() == "the plain reading"
+
+
+def test_get_message_prefers_the_plain_part_of_a_multipart_message(full_access) -> None:
+    container, _transport, email = full_access
+    container.transport.seed_message("both", raw=_plain_and_html())
+    detail = container.mailbox.get_message(message_id="both", account_email=email, now=NOW)
+    assert detail.body_text is not None
+    assert detail.body_text.strip() == "the plain reading"
+
+
+def _outlook_html_only() -> bytes:
+    """`multipart/alternative` with only a `text/html` child, which is what Exchange actually sends.
+
+    Assembled as raw bytes because no `email` builder produces it: offering no plain alternative is
+    precisely the case under test, and a builder call that quietly adds one would defeat it.
+    """
+    boundary = "----=_Next_000_ABC123"
+    html = (
+        "<html><body><table role='presentation'><tr><td>"
+        "<h1>Your invoice is ready</h1>"
+        "<p>Invoice #5521 is attached.</p>"
+        "<p><a href='https://billing.nebius.com/i/5521'>View invoice</a></p>"
+        "<style>p{color:red}</style>"
+        "</td></tr></table></body></html>"
+    )
+    return (
+        (
+            "Date: Tue, 30 Sep 2025 10:00:00 +0000\r\n"
+            "From: Billing <billing@nebius.com>\r\n"
+            "To: ops@example.com\r\n"
+            "Subject: Your invoice is ready\r\n"
+            "Message-ID: <abc123@nebius.com>\r\n"
+            "MIME-Version: 1.0\r\n"
+            f'Content-Type: multipart/alternative; boundary="{boundary}"\r\n'
+            "\r\n"
+            "--placeholder--\r\n"
+            f"Content-Type: text/html; charset=utf-8\r\n"
+            "Content-Transfer-Encoding: 7bit\r\n"
+            "\r\n"
+            f"{html}\r\n"
+            f"--{boundary}--\r\n"
+        )
+        .replace("--placeholder--", f"--{boundary}")
+        .encode()
+    )
+
+
+def _plain_and_html() -> bytes:
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = "Both"
+    msg["From"] = "someone@example.com"
+    msg["To"] = "ops@example.com"
+    msg["Message-ID"] = "<both@example.com>"
+    msg["Date"] = "Tue, 30 Sep 2025 10:00:00 +0000"
+    msg.set_content("the plain reading")
+    msg.add_alternative("<html><body><p>the markup</p></body></html>", subtype="html")
+    return msg.as_bytes()
+
+
 # ----------------------------------------------------------------- modifying
 
 
@@ -356,7 +449,7 @@ def test_a_folded_references_header_cannot_inject_a_line_break(full_access) -> N
             "Subject": "Folded",
             "References": "<a@x>\r\n <b@x>",
         },
-        "raw_b64": "",
+        "raw": b"",
     }
     transport.script_result(message_id="r", thread_id="tf")
     container.replies.reply(body="a", message_id="folded", account_email=email, wait=False, now=NOW)

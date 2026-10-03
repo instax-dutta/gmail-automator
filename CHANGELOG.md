@@ -28,6 +28,49 @@ already merged.
 
 ### Fixed
 
+- `snippet` was read out of `payload`, where it does not exist. `snippet` is a field of Gmail's
+  `Message`; the `MessagePart` under `payload` has no such field, so every message came back with an
+  empty snippet however much text it had. Confirmed against the live gateway, where multi-paragraph
+  messages reported `"snippet": ""`. This also emptied the snippet on every `list_messages` row.
+- `list_messages` reported `label_ids: []` for every row. `messages.list` populates neither
+  `labelIds` nor `snippet`, and the row was reporting the emptiness as fact rather than filling it
+  from the `messages.get` the code was already making. The row now carries the message's real
+  labels, which is what tells an agent whether a result is in the inbox or already filed.
+- `read_message` returned `body_text: null` and `body_html: null` for every multipart message, so
+  HTML-only mail - what Exchange and Outlook always send - was unreadable, while the same code
+  handled the gateway's own outbound plain-text messages fine. `messages.get?format=full` returns a
+  MIME *tree*: the root part carries the headers and each leaf carries its own content, and per
+  Google's own reference `MessagePart.body` "may be empty for container MIME message parts". The
+  reader was treating the root `body.data` as if it held the whole message, which coincides with the
+  content for a single-part message and is empty for a multipart one. The tree is walked instead, so
+  nested `multipart/mixed` and `multipart/alternative` structures resolve to their text leaves and
+  attachment parts are never mistaken for the body. The walk is iterative: nesting depth is the
+  sender's choice, and a message nested a couple of thousand levels deep must read as "no body"
+  rather than raise `RecursionError` out of a tool call.
+- Bodies were decoded to text and re-encoded before being parsed, so any byte that was not valid
+  UTF-8 became U+FFFD before the MIME parser could honour the part's own charset. A Latin-1 body
+  came back as `prï¿½parï¿½e`. Charsets are now read per part, from that part's `Content-Type`.
+- A single-part `text/html` message was reported as `body_text` holding raw markup with
+  `body_html: null`, which reads as prose. Markup now only ever appears in `body_html`.
+- `body_text` is now rendered from the markup when a message offers no `text/plain` alternative,
+  which is what Exchange, Outlook and most notification senders produce. It is the field the tool
+  tells an agent to read, and it used to be null for the majority of inbound business mail.
+  `html_text.py` renders it with the standard library: presentational markup (`<style>`, `<script>`,
+  Outlook's `<!--[if mso]>` blocks, layout tables, inline styling) never leaks through, character
+  references and non-breaking spaces resolve, link labels keep their URL, and image `alt` text is
+  kept for the HTML-only mails that are one big image. `body_html` still carries the original
+  markup, so nothing is lost. A body with no readable content yields no `body_text` rather than an
+  empty one, and a malformed document degrades to no text rather than raising.
+- A `text/plain` part that is empty or whitespace-only no longer wins over the HTML alternative.
+  Senders ship exactly that when they have nothing to say in plain text.
+- The test doubles seeded one flat payload with the whole RFC 822 message in the root `body.data`,
+  and returned a snippet and label ids from `messages.list`, none of which Gmail does. No test
+  could have caught any of the bugs above. They now build a real MIME tree with `snippet` at the
+  message level and an id-only list response, and `seed_message` accepts a `raw` message so any
+  shape can be seeded.
+- `FakeGmailTransport` raised its not-found error as `GoogleApiError("...", code=404, ...)`, which
+  is not a signature that class accepts, so the failure was a `TypeError` rather than a 404. The
+  two call sites now build the error the way every other one does.
 - A CLI command that raised a `GatewayError` printed a rich traceback instead of the one-line
   actionable message the exception already carried. `accounts connect` - the first command in the
   quickstart - hit this on the most likely first-run mistake there is, an unconfigured OAuth client.

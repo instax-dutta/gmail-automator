@@ -87,6 +87,57 @@ async def test_list_messages_returns_a_page(agent) -> None:
 
 
 @pytest.mark.anyio
+async def test_read_message_returns_the_body_of_a_plain_message(agent) -> None:
+    server, _container, transport = agent(READ_SCOPES)
+    transport.seed_message("m1", body="the plain reading")
+    async with Client(server, raise_exceptions=True) as client:
+        result = await client.call_tool("read_message", {"message_id": "m1"})
+    assert not result.is_error, result.content
+    payload = result.structured_content or {}
+    assert "the plain reading" in (payload["body_text"] or "")
+
+
+@pytest.mark.anyio
+async def test_read_message_returns_the_body_of_an_html_only_multipart_message(agent) -> None:
+    """The symptom an agent reported: both bodies null for inbound HTML-only Outlook/Exchange mail.
+
+    Those messages carry no plain alternative, so the whole body sits in one `text/html` leaf of a
+    `multipart/alternative` tree and nothing sits on the root part at all.
+    """
+    server, _container, transport = agent(READ_SCOPES)
+    transport.seed_message("html-1", raw=_html_only_message())
+    async with Client(server, raise_exceptions=True) as client:
+        result = await client.call_tool("read_message", {"message_id": "html-1"})
+    assert not result.is_error, result.content
+    payload = result.structured_content or {}
+    assert payload["subject"] == "Your invoice is ready"
+    assert payload["sender"] == "Billing <billing@nebius.com>"
+    assert "Invoice #5521 is attached." in (payload["body_html"] or "")
+    # `body_text` is the field the tool tells an agent to read, so it must carry the prose too.
+    assert payload["body_text"] is not None
+    assert "Your invoice is ready" in payload["body_text"]
+    assert "<p>" not in payload["body_text"]
+
+
+def _html_only_message() -> bytes:
+    """`multipart/alternative` with only a `text/html` child, which is what Exchange actually sends."""
+    boundary = "----=_Next_000_ABC123"
+    return (
+        "From: Billing <billing@nebius.com>\r\n"
+        "To: ops@example.com\r\n"
+        "Subject: Your invoice is ready\r\n"
+        "Message-ID: <abc123@nebius.com>\r\n"
+        f'Content-Type: multipart/alternative; boundary="{boundary}"\r\n'
+        "\r\n"
+        f"--{boundary}\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n\r\n"
+        "<html><body><h1>Your invoice is ready</h1>"
+        "<p>Invoice #5521 is attached.</p></body></html>\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+
+
+@pytest.mark.anyio
 async def test_reading_is_refused_on_a_send_only_account(agent) -> None:
     server, _container, _transport = agent(SEND_ONLY)
     async with Client(server, raise_exceptions=True) as client:

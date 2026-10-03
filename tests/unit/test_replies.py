@@ -6,18 +6,17 @@ tool result. It just fails to thread. So these tests assert on the headers, not 
 
 from __future__ import annotations
 
-import base64
-
 import pytest
 
 from gmail_automator.gmail.mime import OutgoingMessage
-from gmail_automator.mailbox import decode_header_value, detail_from_payload
+from gmail_automator.mailbox import detail_from_payload
 from gmail_automator.replies import (
     extend_references,
     extract_address,
     reply_subject,
     reply_to,
 )
+from tests.support.gmail_payload import gmail_payload
 
 BODY = "the original body"
 
@@ -44,15 +43,13 @@ def _payload(
         "\r\n"
         f"{body}\r\n"
     ).encode()
-    return {
-        "id": "gmail-id-1",
-        "threadId": "gmail-thread-1",
-        "labelIds": ["INBOX"],
-        "payload": {
-            "headers": [],
-            "body": {"data": base64.urlsafe_b64encode(raw).decode().rstrip("=")},
-        },
-    }
+    return gmail_payload(
+        raw,
+        message_id="gmail-id-1",
+        thread_id="gmail-thread-1",
+        label_ids=("INBOX",),
+        snippet="",
+    )
 
 
 # ------------------------------------------------------------------ subject
@@ -114,69 +111,6 @@ def test_references_passes_through_when_there_is_no_id_to_add() -> None:
 )
 def test_extract_address_unwraps_a_display_name(header: str | None, expected: str) -> None:
     assert extract_address(header) == expected
-
-
-# ------------------------------------------------------------ payload parsing
-
-
-def test_detail_from_payload_reads_the_body_and_threading_headers() -> None:
-    detail = detail_from_payload(_payload(references="<a@x> <b@y>", in_reply_to="<b@y>"))
-    assert detail.body_text is not None
-    assert detail.body_text.strip() == BODY
-    assert detail.message_id_header == "<abc123@mail.example.com>"
-    assert detail.references == "<a@x> <b@y>"
-    assert detail.in_reply_to == "<b@y>"
-    assert detail.sender == "Someone <someone@example.com>"
-    assert detail.thread_id == "gmail-thread-1"
-    assert detail.label_ids == ("INBOX",)
-
-
-def test_detail_prefers_the_parsed_mime_tree_over_the_envelope_headers() -> None:
-    """Gmail lists headers twice; the parsed one is unfolded, which a References chain needs."""
-    payload = _payload(references="<first@x>\r\n <second@x>")
-    payload["payload"]["headers"] = [{"name": "Message-ID", "value": "<abc123@mail.example.com>"}]
-    detail = detail_from_payload(payload)
-    # A folded header unfolds to a single line; the raw envelope copy would keep the newline.
-    assert "\n" not in detail.references
-    assert detail.references.split() == ["<first@x>", "<second@x>"]
-
-
-def test_detail_falls_back_to_envelope_headers_when_the_body_is_unparseable() -> None:
-    payload = {
-        "id": "x",
-        "threadId": "t",
-        "payload": {
-            "body": {"data": ""},
-            "headers": [
-                {"name": "Message-ID", "value": "<fallback@x>"},
-                {"name": "Subject", "value": "=?UTF-8?B?SGVsbG8=?="},
-            ],
-        },
-    }
-    detail = detail_from_payload(payload)
-    assert detail.message_id_header == "<fallback@x>"
-    assert detail.subject == "Hello"
-
-
-def test_detail_survives_a_message_with_no_body() -> None:
-    detail = detail_from_payload({"id": "x", "threadId": "t", "payload": {}})
-    assert detail.body_text is None
-    assert detail.body_html is None
-    assert detail.id == "x"
-
-
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [
-        ("=?UTF-8?B?SGVsbG8=?=", "Hello"),
-        ("plain subject", "plain subject"),
-        ("=?UTF-8?Q?Caf=C3=A9?=", "Café"),
-        ("", ""),
-        (None, ""),
-    ],
-)
-def test_decode_header_value_unpacks_rfc2047(raw: str | None, expected: str) -> None:
-    assert decode_header_value(raw) == expected
 
 
 # ------------------------------------------------------------------- building

@@ -63,6 +63,31 @@ def test_read_message_returns_the_body(read_app) -> None:
     assert response.json()["body_text"].strip() == "hello there"
 
 
+def test_read_message_over_http_also_serves_html_only_mail(read_app) -> None:
+    """REST parity: the same body extraction, so neither front door is the broken one."""
+    client, _container, transport = read_app
+    boundary = "----=_Next_000_ABC123"
+    transport.seed_message(
+        "html-1",
+        raw=(
+            "From: Billing <billing@nebius.com>\r\n"
+            "To: me@example.com\r\n"
+            "Subject: Invoice\r\n"
+            f'Content-Type: multipart/alternative; boundary="{boundary}"\r\n'
+            "\r\n"
+            f"--{boundary}\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n\r\n"
+            "<html><body><p>Invoice #5521 is attached.</p></body></html>\r\n"
+            f"--{boundary}--\r\n"
+        ).encode(),
+    )
+    response = client.get("/v1/mailbox/messages/html-1")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["body_text"] == "Invoice #5521 is attached."
+    assert "<p>" in payload["body_html"]
+
+
 def test_modify_message_over_http(read_app) -> None:
     client, _container, transport = read_app
     transport.seed_message("m1")

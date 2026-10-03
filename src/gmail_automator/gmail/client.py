@@ -312,8 +312,11 @@ class GoogleGmailTransport:
                 sender=str(headers.get("from") or ""),
                 recipients=str(headers.get("to") or ""),
                 date=str(headers.get("date") or ""),
-                snippet=summary.snippet or str((detail.get("payload") or {}).get("snippet") or ""),
-                label_ids=summary.label_ids,
+                # `snippet` and `labelIds` are fields of `Message`, not of the `MessagePart` under
+                # `payload`. `messages.list` populates neither, so both come from the fetch above;
+                # reading them out of `payload` instead returns nothing at all.
+                snippet=summary.snippet or str(detail.get("snippet") or ""),
+                label_ids=tuple(detail.get("labelIds") or summary.label_ids),
             )
 
         return MessagePage(
@@ -411,9 +414,11 @@ _ENVELOPE_HEADERS: tuple[str, ...] = ("Subject", "From", "To", "Date")
 def _summary_from_list_item(item: dict[str, Any]) -> MessageSummary:
     """Build a list-row summary from Gmail's `messages.list` item.
 
-    The list endpoint returns only ids, a thread, a snippet, and label ids. Empty strings keep one
-    shape for the agent instead of two, and a list row should never invent a sender it was not
-    told. `list_messages` fills these in with a follow-up metadata call per row.
+    The endpoint answers with bare ids and a thread id; it populates neither `snippet` nor
+    `labelIds`, so a row read straight from it claims a message has no snippet and no labels when
+    it has both. Empty strings keep one shape for the agent instead of two, and a list row should
+    never invent a sender it was not told. `list_messages` replaces these with a follow-up
+    `messages.get` per row.
     """
     return MessageSummary(
         id=str(item.get("id", "")),
